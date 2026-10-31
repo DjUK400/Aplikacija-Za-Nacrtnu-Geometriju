@@ -98,12 +98,13 @@ details.help li { margin-bottom: 5px; }
 /* list za crtanje */
 .board { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 10px); }
 @media (max-width: 900px) { .board { position: static; } }
-.sheet { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.sheet { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .sheet .frame { width: 100%; max-height: 72vh; touch-action: none; cursor: grab; display: block; }
 .sheet .frame:active { cursor: grabbing; }
 .sheet .frame svg { width: 100%; height: 100%; display: block; }
 .zoom { position: absolute; right: 8px; top: 8px; display: flex; flex-direction: column; gap: 6px; }
-.zoom button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--ink); font-size: 18px; cursor: pointer; font-family: var(--f-mono); }
+.zoom button { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--panel) 88%, transparent); color: var(--ink); font-size: 18px; cursor: pointer; font-family: var(--f-mono); display: grid; place-items: center; padding: 0; }
+.zoom button:disabled { opacity: .35; cursor: default; }
 .titleblock { position: absolute; left: 8px; bottom: 8px; font-family: var(--f-mono); font-size: 11px; color: var(--muted); background: color-mix(in srgb, var(--panel) 85%, transparent); border: 1px solid var(--line); border-radius: 6px; padding: 2px 7px; pointer-events: none; }
 .stepbar { display: flex; gap: 8px; align-items: center; margin-top: 10px; }
 .stepbar .navb { flex: none; width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); font-size: 18px; cursor: pointer; }
@@ -246,7 +247,7 @@ sub, sup { font-size: .72em; line-height: 0; }
           <div class="zoom">
             <button type="button" id="zin" aria-label="Uvećaj">+</button>
             <button type="button" id="zout" aria-label="Umanji">−</button>
-            <button type="button" id="zfit" aria-label="Cijeli crtež">⤢</button>
+            <button type="button" id="zfit" aria-label="Centriraj crtež" title="Centriraj crtež"><svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/><circle cx="12" cy="12" r="2.6"/><path d="M12 6.5v2M12 15.5v2M6.5 12h2M15.5 12h2"/></svg></button>
           </div>
           <div class="titleblock" id="mjerilo">razmak tačaka = 1 cm</div>
         </div>
@@ -3007,6 +3008,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     const el = fr.querySelector('svg');
     el.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     if (st.view) el.setAttribute('viewBox', st.view.join(' '));
+    if (st.refreshZoom) st.refreshZoom();
     // legenda: samo ono što je na crtežu
     const has = c => sol.els.some(e => (e.cls || '').split(' ').includes(c));
     const lg = [];
@@ -3026,11 +3028,48 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     const pts = new Map();
     let start = null;
     const vbox = () => st.view || fitBox();
-    const setV = v => { st.view = v; const el = fr.querySelector('svg'); if (el) el.setAttribute('viewBox', v.map(x => +x.toFixed(4)).join(' ')); };
+    /* granice kretanja i zuma računaju se iz crteža svakog zadatka (sol.bbox), a ne fiksno */
+    function limits() {
+      const r = fr.getBoundingClientRect(), b = fitBox();
+      const rw = Math.max(r.width, 1), rh = Math.max(r.height, 1);
+      const sc0 = Math.max(b[2] / rw, b[3] / rh);            // cm po pikselu kad je cijeli crtež vidljiv
+      const scMax = sc0 * 1.15;                               // najviše malo dalje od cijelog crteža
+      const scMin = Math.min(sc0, Math.max(sc0 / 10, 2.5 / Math.min(rw, rh))); // najbliže: bar 2,5 cm u kadru
+      return { r: [rw, rh], b, sc0, scMin, scMax };
+    }
+    function clampView(v) {
+      const L = limits(), [rw, rh] = L.r, b = L.b;
+      let sc = Math.max(v[2] / rw, v[3] / rh);
+      let cx = v[0] + v[2] / 2, cy = v[1] + v[3] / 2;
+      const scC = Math.min(L.scMax, Math.max(L.scMin, sc));
+      let vw = v[2] * scC / sc, vh = v[3] * scC / sc;
+      sc = scC;
+      const visW = rw * sc, visH = rh * sc;                   // stvarno vidljiv dio (preserveAspectRatio meet)
+      const clampC = (c, lo, size, vis) => {
+        const m = Math.min(vis * 0.12, size * 0.12);          // malo prostora preko ruba crteža
+        if (vis >= size + 2 * m) return lo + size / 2;        // crtež staje cijeli: drži ga u sredini
+        const pad = Math.min(1.6, size / 2);                  // sredina kadra uvijek iznad samog crteža
+        const off = Math.min(size / 2, Math.max(vis / 2 - m, pad));
+        return Math.min(lo + size - off, Math.max(lo + off, c));
+      };
+      cx = clampC(cx, b[0], b[2], visW); cy = clampC(cy, b[1], b[3], visH);
+      return { v: [cx - vw / 2, cy - vh / 2, vw, vh], sc, L };
+    }
+    function updButtons(sc, L) {
+      const zi = $('#zin'), zo = $('#zout');
+      if (!st.sol || !st.sol.steps.length) { zi.disabled = zo.disabled = true; return; }
+      zi.disabled = sc <= L.scMin * 1.001; zo.disabled = sc >= L.scMax * 0.999;
+    }
+    const setV = v => {
+      const c = clampView(v); st.view = c.v;
+      const el = fr.querySelector('svg'); if (el) el.setAttribute('viewBox', c.v.map(x => +x.toFixed(4)).join(' '));
+      updButtons(c.sc, c.L);
+    };
+    st.refreshZoom = () => { if (st.sol && st.sol.steps.length) { const c = clampView(vbox()); updButtons(c.sc, c.L); } };
     const toUser = (cx, cy, v) => { const r = fr.getBoundingClientRect(); const sc = Math.max(v[2] / r.width, v[3] / r.height); const ox = v[0] + v[2] / 2 - (r.width * sc) / 2, oy = v[1] + v[3] / 2 - (r.height * sc) / 2; return [ox + (cx - r.left) * sc, oy + (cy - r.top) * sc, sc]; };
     function zoomAt(k, cx, cy) {
       const v = vbox(); const [ux, uy] = toUser(cx, cy, v);
-      const nw = Math.min(Math.max(v[2] / k, 1.5), 400), f = nw / v[2], nh = v[3] * f;
+      const nw = v[2] / k, f = nw / v[2], nh = v[3] * f;
       setV([ux - (ux - v[0]) * f, uy - (uy - v[1]) * f, nw, nh]);
     }
     fr.addEventListener('wheel', e => { if (!st.sol || !st.sol.steps.length) return; e.preventDefault(); zoomAt(e.deltaY < 0 ? 1.15 : 1 / 1.15, e.clientX, e.clientY); }, { passive: false });
@@ -3051,7 +3090,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
         const k = d1 / d0;
         const c0 = [(a0[0] + b0[0]) / 2, (a0[1] + b0[1]) / 2], c1 = [(a1[0] + b1[0]) / 2, (a1[1] + b1[1]) / 2];
         const [ux, uy] = toUser(c0[0], c0[1], v);
-        const nw = Math.min(Math.max(v[2] / k, 1.5), 400), f = nw / v[2];
+        const nw = v[2] / k, f = nw / v[2];
         const nv = [ux - (ux - v[0]) * f, uy - (uy - v[1]) * f, nw, v[3] * f];
         const s2 = sc * f;
         nv[0] -= (c1[0] - c0[0]) * s2; nv[1] -= (c1[1] - c0[1]) * s2;
@@ -3064,6 +3103,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     $('#zin').addEventListener('click', () => { if (st.sol && st.sol.steps.length) zoomAt(1.35, ...centre()); });
     $('#zout').addEventListener('click', () => { if (st.sol && st.sol.steps.length) zoomAt(1 / 1.35, ...centre()); });
     $('#zfit').addEventListener('click', () => { st.view = null; renderDrawing(); });
+    window.addEventListener('resize', () => { if (st.view) setV(st.view); else if (st.refreshZoom) st.refreshZoom(); });
   })();
 
   function renderResults() {
