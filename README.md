@@ -1,5 +1,7 @@
 # Rješavač ortogonalnih projekcija
 
+> Dio kolekcije **Aplikacije za fakultet**: https://djuk400.github.io/
+
 **Otvori sajt:** https://djuk400.github.io/Aplikacija-Za-Nacrtnu-Geometriju/
 
 Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upišeš postavu zadatka onako kako piše na listu, a sajt prepozna tačke, prave, ravni i likove i riješi zadatak u **ortogonalnoj (Mongeovoj) projekciji**, korak po korak, s objašnjenjem svakog koraka.
