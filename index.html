@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="color-scheme" content="light dark">
-<title>Rješavač ortogonalnih projekcija</title>
+<title>Rješavač nacrtne geometrije</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -85,6 +85,21 @@ select { font-family: var(--f-body); font-size: 14px; color: var(--ink); backgro
 .tasks label { display: flex; gap: 8px; align-items: flex-start; font-size: .93rem; padding: 4px 2px; cursor: pointer; }
 .tasks input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; flex: none; }
 .tasks .det { font-size: .72rem; font-family: var(--f-disp); letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-left: auto; padding-left: 6px; }
+.projsel { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.projsel .lbl { margin: 0; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; padding: 3px; background: var(--paper); gap: 3px; }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { font-family: var(--f-disp); font-weight: 600; font-size: .98rem; padding: 6px 14px; border-radius: 7px; cursor: pointer; color: var(--muted); min-height: 34px; display: inline-flex; align-items: center; }
+.seg input:checked + label { background: var(--ink); color: var(--paper); }
+.seg input:focus-visible + label { outline: 2px solid var(--h); outline-offset: 2px; }
+.kosapar { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.kosapar label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
+.notice.info { background: var(--soft); color: var(--muted); }
+.ngsvg .wallH { fill: color-mix(in srgb, var(--h) 7%, transparent); stroke: none; }
+.ngsvg .wallF { fill: color-mix(in srgb, var(--f) 6%, transparent); stroke: none; }
+.ngsvg .wallP { fill: color-mix(in srgb, var(--p) 6%, transparent); stroke: none; }
+.ngsvg .dashax { stroke-dasharray: .4em .3em; }
+.ngsvg .wl { font-style: normal; font-weight: 600; opacity: .55; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .opts label { display: flex; flex-direction: column; gap: 4px; font-size: .85rem; color: var(--muted); }
 details.help { border-top: 1px solid var(--line); padding-top: 10px; }
@@ -245,8 +260,8 @@ html footer.foot{margin-top:40px;padding-top:12px;border-top:1px solid var(--fk-
 <div class="wrap">
   <header class="top">
     <p class="fk-eyebrow">Nacrtna geometrija · rješavač</p>
-    <h1 class="fk-h1">Rješavač ortogonalnih projekcija</h1>
-    <p class="sub fk-lede">Upiši postavu zadatka iz nacrtne geometrije. Stranica prepozna tačke, prave i ravni, i riješi zadatak u prvoj i drugoj projekciji, korak po korak.</p>
+    <h1 class="fk-h1">Rješavač nacrtne geometrije</h1>
+    <p class="sub fk-lede">Upiši postavu zadatka iz nacrtne geometrije. Stranica prepozna tačke, prave i ravni, i riješi zadatak u ortogonalnoj ili kosoj projekciji, korak po korak.</p>
   </header>
 
   <div class="grid">
@@ -261,6 +276,21 @@ html footer.foot{margin-top:40px;padding-top:12px;border-top:1px solid var(--fk-
           <div class="keys" aria-label="Posebni znakovi">
             <button type="button" data-ins="α">α</button><button type="button" data-ins="β">β</button><button type="button" data-ins="γ">γ</button><button type="button" data-ins="τ">τ</button><button type="button" data-ins="ρ">ρ</button><button type="button" data-ins="∞">∞</button><button type="button" data-ins="?">?</button><button type="button" data-ins="; ">;</button><button type="button" data-ins="−">−</button>
           </div>
+        </div>
+        <div class="projsel" role="radiogroup" aria-label="Projekcija u kojoj se crta rješenje">
+          <span class="lbl">Riješi u</span>
+          <div class="seg">
+            <input type="radio" name="proj" id="proj-o" value="orto" checked><label for="proj-o">Ortogonalnoj</label>
+            <input type="radio" name="proj" id="proj-k" value="kosa"><label for="proj-k">Kosoj</label>
+          </div>
+        </div>
+        <div class="kosapar" id="kosapar" hidden>
+          <label for="kdeg">Ugao (−xy)
+            <select id="kdeg"><option value="30">30°</option><option value="45">45°</option><option value="60">60°</option><option value="135">135°</option></select>
+          </label>
+          <label for="kk">Skraćenje ose y
+            <select id="kk"><option value="1">1 : 1</option><option value="0.75">3 : 4</option><option value="0.6667">2 : 3</option><option value="0.5">1 : 2</option></select>
+          </label>
         </div>
         <div class="row"><button class="btn primary" id="rijesi" type="button">Riješi</button><span class="empty" id="status"></span></div>
       </section>
@@ -291,11 +321,11 @@ html footer.foot{margin-top:40px;padding-top:12px;border-top:1px solid var(--fk-
             <li>Traženo se prepoznaje po riječima: prodor, oktant, prava veličina, ugao, presjek, udaljenost, paralelna ravan, normalna ravan, simetralna, nagibnica, oboriti, horizontala, frontala, tri projekcije.</li>
             <li>Ako nešto nije prepoznato kako treba, uključi ili isključi stavku u listi „Šta se rješava”.</li>
           </ul>
-          <p class="empty">Nije podržano: kosa projekcija, presjek dva trougla, presjeci tijela (prizma, piramida), rotacija. Ugao prave i ravni je dat samo brojčano.</p>
+          <p class="empty">Kosa projekcija prikazuje isti rezultat u prostoru: tačke, prave, tragove, likove i presjeke. Konstrukcije koje se rade u ravni crtanja (obaranje, prava veličina, transformacija) crtaju se samo u ortogonalnoj. Nije podržano: tijela (prizma, piramida), rotacija. Ugao prave i ravni je dat samo brojčano.</p>
         </details>
       </section>
     <section class="board stack a-board" aria-label="Rješenje">
-      <div id="kosa" class="notice" hidden><b>Kosa projekcija nije podržana.</b><span>Postava traži crtanje u kosoj projekciji. Rješenje je prikazano u ortogonalnoj projekciji.</span></div>
+      <div id="kosa" class="notice" hidden></div>
       <div>
         <div class="sheet">
           <div class="frame" id="frame" aria-label="Crtež u ortogonalnoj projekciji" role="img"></div>
@@ -731,7 +761,16 @@ function parseText(raw) {
 
   out.flags = {
     show3: /tre[ćc][aeiou]|tri\s+(ortogonaln|projekc)|profiln[a-z]*\s+projekc|\bp‴|tre[ćc]u\s+projek/.test(low),
-    kosa: /(^|[^a-zčćšž])kos(a|e|oj|u|om|ih|im)(\s|$|[.,;:])/.test(low)
+    kosa: /(^|[^a-zčćšž])kos(a|e|oj|u|om|ih|im)(\s|$|[.,;:])/.test(low),
+    ortoToo: /ortogonaln/.test(low),
+    kosaPar: (() => {
+      const r = {};
+      const a = /\(\s*-?\s*xy\s*\)\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low) || /-\s*xy\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
+      if (a) { let d = num(a[1]); if (d > 90 && d % 10 === 0 && d / 10 <= 90 && !/°/.test(low.slice(a.index, a.index + a[0].length + 2))) d = d / 10; if (d > 0 && d < 180) r.deg = d; }
+      const k = /\(\s*(\d+)\s*:\s*(\d+)\s*\)/.exec(low) || /y\s*:\s*y_?k\s*=\s*(\d+)\s*:\s*(\d+)/.exec(low);
+      if (k && +k[1] && +k[2]) { const q = (+k[1]) / (+k[2]); if (q > 0 && q <= 1) r.k = q; }
+      return r;
+    })()
   };
   return out;
 }
@@ -1702,6 +1741,7 @@ class Solver {
     this.step(`Presjek ${T.name} ∩ ${tri.name}`, 'Presjek');
     const [M, N] = hits;
     [1, 2].forEach(m => this.seg(this.pr(M.P, m), this.pr(N.P, m), 'resS'));
+    this.el({ k: 'S3', A: M.P, B: N.P, cls: 'resS' });
     this.say(`Stranice ${M.L.name} i ${N.L.name} probadaju ravan ${T.name} u ${nms[0]} i ${nms[1]}. Presjek ravni i trougla je duž ${nms[0]}${nms[1]}.`);
     this.res1(`Presjek ${T.name} ∩ ${tri.name}`, `duž ${nms[0]}${fP(M.P)} – ${nms[1]}${fP(N.P)}`);
   }
@@ -2377,6 +2417,7 @@ Object.assign(Solver.prototype, {
     const [P1, P2] = cands;
     this.step(`Presjek ${names[0]}${names[1]}`, `Presjek ${names.join('')}`);
     [1, 2].concat(this.show3 ? [3] : []).forEach(m => this.seg(this.pr(P1.P, m), this.pr(P2.P, m), 'resS'));
+    this.el({ k: 'S3', A: P1.P, B: P2.P, cls: 'resS' });
     const tried = [];
     this.say(`Stranice se ispituju redom; probadaju samo ${P1.edge.name} (kroz ${P1.through.name}) i ${P2.edge.name} (kroz ${P2.through.name}). Presjek likova je duž ${names[0]}${names[1]}: ${names[0]}′${names[1]}′ i ${names[0]}″${names[1]}″.`);
     this.res1(`Presjek ${A.name} ∩ ${B.name}`, `duž ${names[0]}${fP(P1.P)} – ${names[1]}${fP(P2.P)}`);
@@ -2633,6 +2674,7 @@ Object.assign(Solver.prototype, {
     const PA = lineAt(L12, best[0]), PB = lineAt(L12, best[1]);
     const pN = this.pickName(['P', 'M']), qN = this.pickName(['Q', 'N']);
     [1, 2].forEach(m => this.seg(this.pr(PA, m), this.pr(PB, m), 'resS'));
+    this.el({ k: 'S3', A: PA, B: PB, cls: 'resS' });
     [[PA, pN], [PB, qN]].forEach(([P, n]) => { if (len(sub(P, h1.P)) > 1e-6 && len(sub(P, h2.P)) > 1e-6) this.drawPoint(P, n, 'res'); });
     const lab = (P, n) => len(sub(P, h1.P)) < 1e-6 ? n1 : len(sub(P, h2.P)) < 1e-6 ? n2 : n;
     const a1 = lab(PA, pN), a2 = lab(PB, qN);
@@ -2797,6 +2839,8 @@ function renderSVG(sol, stepIdx, opt) {
   s += `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}" class="ngsvg" style="font-size:${fs}px">`;
   if (opt.inlineStyle) s += `<style>${opt.inlineStyle}</style><rect x="${r(b.minx)}" y="${r(b.miny)}" width="${r(b.maxx - b.minx)}" height="${r(b.maxy - b.miny)}" class="bg"/>`;
   // ose
+  if (sol.kosaAxes) s += sol.kosaAxes;
+  else {
   s += `<g class="axes">`;
   s += `<line x1="${r(b.minx + 0.3)}" y1="0" x2="${r(b.maxx - 0.3)}" y2="0" class="ax"/>`;
   s += `<line x1="0" y1="${r(b.miny + 0.3)}" x2="0" y2="${r(b.maxy - 0.3)}" class="ax2"/>`;
@@ -2811,6 +2855,7 @@ function renderSVG(sol, stepIdx, opt) {
   if (sol.show3) s += `<text x="${r(sol.sx > 0 ? b.minx + 0.35 : b.maxx - 0.35)}" y="${r(-0.25)}" class="axl" text-anchor="middle">y</text>`;
   s += `<text x="${r(-0.2 * sol.sx)}" y="${r(0.55)}" class="axl" text-anchor="${sol.sx > 0 ? 'end' : 'start'}">O</text>`;
   s += `</g>`;
+  }
   const vis = e => all || e.step <= stepIdx;
   const cur = e => !all && e.step === stepIdx;
   const order = { Poly: 0, S: 1, X: 1, A: 1, C: 1, L: 2, G: 3, P: 4, T: 5 };
@@ -2848,6 +2893,118 @@ function renderSVG(sol, stepIdx, opt) {
   return s;
 }
 
+
+/* ---------------- kosa projekcija ----------------
+   Isti 3D rezultat kao u ortogonalnoj, nacrtan u kosoj projekciji:
+   x i z u pravoj veličini, osa y pod uglom (−xy) prema −x, skraćena faktorom k = y_k : y. */
+function buildKosa(sol, prm) {
+  prm = prm || {};
+  const deg = prm.deg || 30, k = prm.k || 1, sx = sol.sx || 1;
+  const ca = Math.cos(deg * Math.PI / 180), sa = Math.sin(deg * Math.PI / 180);
+  const K = P => [sx * (P.x - k * P.y * ca), -(P.z - k * P.y * sa)];
+  const dView = V(k * ca, 1, k * sa); // pravac projiciranja (tačke sa većim y su bliže posmatraču)
+  const els = [];
+  const lineAtL = (L, t) => add(L.p0, mul(L.u, t));
+  const hiddenK = (P, T) => {
+    if (!T) return false;
+    if (Array.isArray(T)) return T.some(t => hiddenK(P, t));
+    const pl = polyPlane(T), den = dot(pl.n, dView);
+    if (Math.abs(den) < 1e-9 * len(pl.n)) return false;
+    const t = (pl.d - dot(pl.n, P)) / den;
+    if (t <= 1e-7) return false;
+    return inPoly3(add(P, mul(dView, t)), T) && strictInside(add(P, mul(dView, t)), T);
+  };
+  function strictInside(Q, T) { // ne računaj ivice lika kao zaklon
+    const V3 = T.P, n = T.P.length;
+    for (let i = 0; i < n; i++) { const a = V3[i], b = V3[(i + 1) % n]; const ab = sub(b, a); const t = dot(sub(Q, a), ab) / dot(ab, ab); if (t > -1e-6 && t < 1 + 1e-6 && len(sub(Q, add(a, mul(ab, t)))) < 1e-6) return false; }
+    return true;
+  }
+  const strip = s => String(s || '').replace(/[′″‴]+$/, '');
+  const seenPt = new Map(), seenL = new Map();
+  const nGiven = new Set(sol.els.filter(e => e.k === 'P' && e.step === 0 && e.cls === 'pt' && e.lab).map(e => strip(e.lab))).size;
+  const given = new Set();
+  // tačke zadate na početku: prostorna tačka i njene projekcije na H i F
+  sol.els.forEach(e => {
+    if (e.k === 'P' && e.P3 && e.lab) {
+      const nm = strip(e.lab);
+      const key = nm + '|' + [e.P3.x, e.P3.y, e.P3.z].map(v => v.toFixed(4)).join(',');
+      if (seenPt.has(key)) return;
+      seenPt.set(key, true);
+      const isGiven = e.step === 0 && e.cls === 'pt' && nGiven <= 3;
+      els.push({ k: 'P', p: K(e.P3), lab: nm, cls: e.cls === 'axpt' ? 'pt2' : e.cls, step: e.step });
+      if (isGiven && !given.has(nm)) {
+        given.add(nm);
+        const P = e.P3, P1 = V(P.x, P.y, 0), P2 = V(P.x, 0, P.z), Px = V(P.x, 0, 0);
+        [[P, P1], [P1, Px], [P, P2], [P2, Px]].forEach(([a, b]) => { if (len(sub(a, b)) > 1e-9) els.push({ k: 'S', a: K(a), b: K(b), cls: 'ord', step: 0 }); });
+        if (Math.abs(P.z) > 1e-9) els.push({ k: 'P', p: K(P1), lab: nm + '′', cls: 'pt2', step: 0 });
+        if (Math.abs(P.y) > 1e-9) els.push({ k: 'P', p: K(P2), lab: nm + '″', cls: 'pt2', step: 0 });
+      }
+    } else if (e.k === 'L' && e.L && e.L.u && !e.dot) {
+      const id = e.L;
+      const prev = seenL.get(id);
+      if (prev) { prev.t0 = Math.min(prev.t0, e.t0); prev.t1 = Math.max(prev.t1, e.t1); return; }
+      const ne = { k: 'L', L: e.L, cls: e.cls, lab: e.lab ? strip(e.lab) : null, vis: e.vis, step: e.step, t0: e.t0, t1: e.t1 };
+      seenL.set(id, ne); els.push(ne);
+    } else if (e.k === 'Poly' && e.poly && e.poly.P) {
+      if (els.some(x => x.k === 'Poly' && x.poly === e.poly)) return;
+      els.push({ k: 'Poly', pts: e.poly.P.map(K), cls: 'tri fillonly', poly: e.poly, step: e.step });
+    } else if (e.k === 'S3') {
+      els.push({ k: 'S', a: K(e.A), b: K(e.B), cls: e.cls, step: e.step });
+    }
+  });
+  // dijelovi linija: puno u I oktantu, isprekidano van njega ili iza lika
+  els.forEach(e => {
+    if (e.k !== 'L') return;
+    const L = e.L, tri = L.hideTri || null, N = 240;
+    const vis = t => { const P = lineAtL(L, t); if (tri && hiddenK(P, tri)) return false; if (e.vis === 'all') return true; return inI(P); };
+    const res = []; let a = e.t0, va = vis(a);
+    for (let i = 1; i <= N; i++) {
+      const b = e.t0 + (e.t1 - e.t0) * i / N, vb = vis(b);
+      if (vb !== va) {
+        let lo = e.t0 + (e.t1 - e.t0) * (i - 1) / N, hi = b;
+        for (let j = 0; j < 30; j++) { const m = (lo + hi) / 2; if (vis(m) === va) lo = m; else hi = m; }
+        const cut = (lo + hi) / 2;
+        res.push({ a: K(lineAtL(L, a)), b: K(lineAtL(L, cut)), solid: va }); a = cut; va = vb;
+      }
+      if (i === N) res.push({ a: K(lineAtL(L, a)), b: K(lineAtL(L, e.t1)), solid: va });
+    }
+    e.pieces = res;
+  });
+  // okvir crteža i osni sistem sa zidovima I oktanta
+  const pts = [];
+  els.forEach(e => { if (e.k === 'P') pts.push(e.p); if (e.k === 'S') pts.push(e.a, e.b); if (e.k === 'Poly') e.pts.forEach(p => pts.push(p)); if (e.k === 'L') e.pieces.forEach(p => pts.push(p.a, p.b)); });
+  const all3 = [];
+  sol.els.forEach(e => { if (e.k === 'P' && e.P3) all3.push(e.P3); });
+  const mx = (f, d) => Math.max(d, ...all3.map(f).filter(isFinite)) + 1;
+  const X = Math.min(mx(P => P.x, 3), 25), Y = Math.min(mx(P => P.y, 3), 25), Z = Math.min(mx(P => P.z, 3), 25);
+  const nx = Math.min(Math.max(0, -Math.min(0, ...all3.map(P => P.x))) + 1, 25), ny = Math.min(Math.max(0, -Math.min(0, ...all3.map(P => P.y))) + 1, 25), nz = Math.min(Math.max(0, -Math.min(0, ...all3.map(P => P.z))) + 1, 25);
+  const O = V(0, 0, 0);
+  [V(X, 0, 0), V(-nx, 0, 0), V(0, Y, 0), V(0, -ny, 0), V(0, 0, Z), V(0, 0, -nz)].forEach(P => pts.push(K(P)));
+  pts.push([0, 0]);
+  let minx = Math.min(...pts.map(p => p[0])), maxx = Math.max(...pts.map(p => p[0])), miny = Math.min(...pts.map(p => p[1])), maxy = Math.max(...pts.map(p => p[1]));
+  const pad = 1.6; minx -= pad; maxx += pad; miny -= pad; maxy += pad;
+  const bbox = { minx, maxx, miny, maxy };
+  const r = v => +v.toFixed(3), PP = p => `${r(p[0])},${r(p[1])}`;
+  const poly = (a, cls) => `<polygon points="${a.map(K).map(PP).join(' ')}" class="${cls}"/>`;
+  const ln = (A, B, cls) => { const a = K(A), b = K(B); return `<line x1="${r(a[0])}" y1="${r(a[1])}" x2="${r(b[0])}" y2="${r(b[1])}" class="${cls}"/>`; };
+  const tx = (P, t, extra) => { const p = K(P); return `<text x="${r(p[0])}" y="${r(p[1])}" class="axl" ${extra || ''}>${t}</text>`; };
+  let ax = '<g class="axes">';
+  ax += poly([O, V(X, 0, 0), V(X, Y, 0), V(0, Y, 0)], 'wallH');
+  ax += poly([O, V(X, 0, 0), V(X, 0, Z), V(0, 0, Z)], 'wallF');
+  ax += poly([O, V(0, Y, 0), V(0, Y, Z), V(0, 0, Z)], 'wallP');
+  ax += ln(O, V(X, 0, 0), 'ax') + ln(O, V(0, Y, 0), 'ax') + ln(O, V(0, 0, Z), 'ax');
+  ax += ln(O, V(-nx, 0, 0), 'ax2 dashax') + ln(O, V(0, -ny, 0), 'ax2 dashax') + ln(O, V(0, 0, -nz), 'ax2 dashax');
+  ax += tx(V(X + 0.3, 0, 0.25), 'x') + tx(V(0, 0, Z + 0.3), 'z', 'dx="0.2"') + tx(V(0, Y + 0.4, 0), 'y', 'dx="-0.35"') + tx(O, 'O', 'dx="0.2" dy="0.5"');
+  ax += tx(V(X * 0.82, Y * 0.7, 0), 'H', 'class="axl wl"') + tx(V(X * 0.82, 0, Z * 0.85), 'F', 'class="axl wl"') + tx(V(0, Y * 0.55, Z * 0.85), 'P', 'class="axl wl"');
+  ax += '</g>';
+  const out = { steps: sol.steps, els, res: sol.res, notes: sol.notes, bbox, show3: false, sx, kosaAxes: ax, kosa: true };
+  out.fs = sol.fs;
+  out.labels = placeLabels(out);
+  out.fs = out.fs;
+  out.stepHas = sol.steps.map((s, i) => els.some(e => e.step === i));
+  return out;
+}
+
 function solve(text, opt) {
   opt = opt || {};
   const P = parseText(text);
@@ -2876,7 +3033,7 @@ function solve(text, opt) {
   return sol;
 }
 
-const API = { solve, parseText, detectTasks, renderSVG, labHTML, TASK_LABELS, fmt, _int: { planePlane, linePlane, solve3, planeFromInts, V } };
+const API = { solve, buildKosa, parseText, detectTasks, renderSVG, labHTML, TASK_LABELS, fmt, _int: { planePlane, linePlane, solve3, planeFromInts, V } };
 if (typeof module !== 'undefined' && module.exports) module.exports = API;
 else root.NG = API;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -2921,7 +3078,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = C; else ro
 (function (root) {
 const EX = [
   /* grupa: listovi */
-  { id: 'o1', label: 'List 3.1 · O₁ – kosa projekcija (obavještenje)', text: 'U kosoj projekciji nacrtati ravan τ(4, 3, 4) i njene tragove. U ravni τ se nalazi tačka A. Nacrtati horizontalu u tački A(1,5; 1; ?).' },
+  { id: 'o1', label: 'List 3.1 · O₁ – ravan i horizontala u kosoj projekciji', text: 'U kosoj projekciji nacrtati ravan τ(4, 3, 4) i njene tragove. U ravni τ se nalazi tačka A. Nacrtati horizontalu u tački A(1,5; 1; ?).' },
   { id: 'o2', label: 'List 3.1 · O₂ – horizontala i obaranje', text: 'Zadata je ravan τ(4, 3, 4). U ravni τ se nalazi tačka A. Nacrtati horizontalu u tački A(1,5; 1; ?). Oboriti ravan i elemente u ravni.' },
   { id: 'o3', label: 'List 3.1 · O₃ – ravan iz dvije paralelne prave', text: 'Zadata je ravan dvjema paralelnim pravama. Odrediti tragove te ravni i kroz tačku C postaviti prvu i drugu nagibnicu te ravni. Odrediti ugao između te ravni i horizontalnice.\na: A(2; 6; 2), B(9; 1; 7)\nb: C(6; 2; 1)' },
   { id: 'o5', label: 'List 3.2 · O₅ – presjek tri ravni', text: 'Odrediti presjek ravni α(7,5; 6,5; 8,5), β(−4,5; 4,5; 3,5) i γ(4,5; ∞; ∞). Kroz koje oktante prolazi presječna prava između ravni α i β?' },
@@ -2984,6 +3141,22 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
   $('#rijesi').addEventListener('click', () => { st.overrides = null; run(); });
   $('#postava').addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { st.overrides = null; run(); } });
   $('#opt3').addEventListener('change', e => { st.show3 = e.target.value; run(true); });
+  st.mode = 'orto'; st.modeAuto = true;
+  function kosaPrm() { return { deg: +$('#kdeg').value, k: +$('#kk').value }; }
+  function setMode(m, fromUser) {
+    st.mode = m; if (fromUser) st.modeAuto = false;
+    $('#proj-o').checked = m === 'orto'; $('#proj-k').checked = m === 'kosa';
+    $('#kosapar').hidden = m !== 'kosa';
+    st.kosaSol = null; st.view = null;
+    if (st.sol) { renderAll(); }
+  }
+  document.querySelectorAll('input[name=proj]').forEach(r => r.addEventListener('change', () => setMode(r.value, true)));
+  ['#kdeg', '#kk'].forEach(id => $(id).addEventListener('change', () => { st.kosaSol = null; st.view = null; if (st.sol) renderAll(); }));
+  function curDraw() {
+    if (st.mode !== 'kosa' || !st.sol || !st.sol.steps.length) return st.sol;
+    if (!st.kosaSol) st.kosaSol = NG.buildKosa(st.sol, kosaPrm());
+    return st.kosaSol;
+  }
   $('#optx').addEventListener('change', e => { st.xLeft = e.target.value === 'l'; run(true); });
 
   function run(keepView) {
@@ -2993,7 +3166,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     if (st.show3 !== 'auto') opt.show3 = st.show3 === 'on';
     if (st.overrides) opt.tasks = st.overrides;
     const sol = NG.solve(st.text, opt);
-    st.sol = sol;
+    st.sol = sol; st.kosaSol = null;
+    // projekcija iz teksta: kosa samo ako postava traži kosu, a ne traži i ortogonalnu
+    const kp = sol.parsed.flags.kosaPar || {};
+    if (kp.deg && [...$('#kdeg').options].some(o => +o.value === kp.deg)) $('#kdeg').value = String(kp.deg);
+    if (kp.k) { const best = [...$('#kk').options].reduce((b, o) => Math.abs(+o.value - kp.k) < Math.abs(+b.value - kp.k) ? o : b); $('#kk').value = best.value; }
+    if (st.modeAuto) { st.mode = sol.kosa && !sol.parsed.flags.ortoToo ? 'kosa' : 'orto'; $('#proj-o').checked = st.mode === 'orto'; $('#proj-k').checked = st.mode === 'kosa'; $('#kosapar').hidden = st.mode !== 'kosa'; }
     st.step = Math.max(0, sol.steps.length - 1);
     st.view = null;
     renderAll();
@@ -3001,7 +3179,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
 
   function renderAll() {
     const sol = st.sol, P = sol.parsed;
-    $('#kosa').hidden = !sol.kosa;
+    const nt = $('#kosa');
+    if (st.mode === 'kosa') { nt.hidden = false; nt.className = 'notice info'; nt.innerHTML = '<b>Kosa projekcija.</b><span>Prikazan je rezultat u prostoru: tačke, prave, tragovi, likovi i presjeci. Opis koraka opisuje konstrukciju u ortogonalnim projekcijama; obaranje, prava veličina i transformacija crtaju se samo tamo.</span>'; }
+    else if (sol.kosa) { nt.hidden = false; nt.className = 'notice'; nt.innerHTML = '<b>Postava traži i kosu projekciju.</b><span>Izaberi „Kosoj” iznad dugmeta Riješi da vidiš crtež u kosoj projekciji.</span>'; }
+    else nt.hidden = true;
     // prepoznato
     const ch = [];
     const fv = v => v === '?' ? '?' : v === Infinity ? '∞' : v === -Infinity ? '−∞' : NG.fmt(v, 3);
@@ -3030,7 +3211,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     $('#koraci').innerHTML = sol.steps.map((s, i) => `<button type="button" role="tab" data-i="${i}" ${i === st.step ? 'aria-current="step" aria-selected="true"' : 'aria-selected="false"'}><span class="n">${i === sol.steps.length - 1 && sol.steps.length > 1 ? '✓' : i + 1}</span>${capHTML(s.short)}</button>`).join('');
     $('#koraci').querySelectorAll('button').forEach(b => b.addEventListener('click', () => { st.step = +b.dataset.i; update(); }));
     const s = sol.steps[st.step];
-    $('#opis').innerHTML = s ? `<h2>${capHTML(s.title)}</h2>${s.text.map(t => `<p>${capHTML(t)}</p>`).join('')}` : '<p class="empty">Upiši postavu i pritisni Riješi.</p>';
+    const kd = st.mode === 'kosa' ? curDraw() : null;
+    const onlyOrto = kd && kd.stepHas && !kd.stepHas[st.step] && st.step < sol.steps.length - 1;
+    $('#opis').innerHTML = s ? `<h2>${capHTML(s.title)}</h2>${onlyOrto ? '<p class="empty">Ovaj korak se crta u ortogonalnim projekcijama; u kosoj nema novih elemenata.</p>' : ''}${s.text.map(t => `<p>${capHTML(t)}</p>`).join('')}` : '<p class="empty">Upiši postavu i pritisni Riješi.</p>';
     $('#prev').disabled = st.step <= 0; $('#next').disabled = st.step >= sol.steps.length - 1;
     const cur = $('#koraci').querySelector('[aria-current]');
     if (cur) { const box = $('#koraci'); const l = cur.offsetLeft - box.offsetLeft; if (l < box.scrollLeft || l + cur.offsetWidth > box.scrollLeft + box.clientWidth) box.scrollLeft = l - 20; }
@@ -3040,7 +3223,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
   function update() { renderSteps(); renderDrawing(); }
 
   /* crtež sa pomjeranjem i zumiranjem */
-  function fitBox() { const b = st.sol.bbox; return [b.minx, b.miny, b.maxx - b.minx, b.maxy - b.miny]; }
+  function fitBox() { const b = curDraw().bbox; return [b.minx, b.miny, b.maxx - b.minx, b.maxy - b.miny]; }
   function gridSVG(b, fs) {
     const x0 = Math.ceil(b.minx), x1 = Math.floor(b.maxx), y0 = Math.ceil(b.miny), y1 = Math.floor(b.maxy);
     let s = '<g class="gridg">';
@@ -3048,12 +3231,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     return s + '</g>';
   }
   function renderDrawing() {
-    const sol = st.sol, fr = $('#frame');
+    const sol = curDraw(), fr = $('#frame');
     if (!sol.steps.length) { fr.innerHTML = ''; return; }
     const last = sol.steps.length - 1;
     let svg = NG.renderSVG(sol, st.step);
     const b = sol.bbox;
-    svg = svg.replace('<g class="axes">', gridSVG(b, sol.fs) + '<g class="axes">');
+    if (!sol.kosa) svg = svg.replace('<g class="axes">', gridSVG(b, sol.fs) + '<g class="axes">');
     if (st.step < last) svg = svg.replace('class="ngsvg"', 'class="ngsvg stepping"');
     // svaki element dobija klasu el radi blijeđenja prethodnih koraka
     svg = svg.replace(/<(line|path|polygon|circle|text) ([^>]*?)class="([^"]*)"/g, (m, t, a, c) => /gridpt|^ax|axl/.test(c) ? m : `<${t} ${a}class="el ${c}"`);
@@ -3180,7 +3363,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     };
   })();
   function exportSVG() {
-    const sol = st.sol; if (!sol || !sol.steps.length) return null;
+    if (!st.sol || !st.sol.steps.length) return null;
+    const sol = curDraw();
     let svg = NG.renderSVG(sol, sol.steps.length - 1, { inlineStyle: EXPORT_CSS() + 'text{font-family:Arial,Helvetica,sans-serif}' });
     const b = sol.bbox, w = b.maxx - b.minx, h = b.maxy - b.miny;
     svg = svg.replace(/^<svg /, `<svg width="${(w * 10).toFixed(1)}mm" height="${(h * 10).toFixed(1)}mm" `);
@@ -3193,7 +3377,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
   $('#svgdl').addEventListener('click', () => { const s = exportSVG(); if (s) download('rjesenje.svg', new Blob([s], { type: 'image/svg+xml' })); });
   $('#pngdl').addEventListener('click', () => {
     const s = exportSVG(); if (!s) return;
-    const b = st.sol.bbox, w = b.maxx - b.minx, h = b.maxy - b.miny, px = 120;
+    const b = curDraw().bbox, w = b.maxx - b.minx, h = b.maxy - b.miny, px = 120;
     const img = new Image();
     img.onload = () => {
       const c = document.createElement('canvas'); c.width = Math.round(w * px); c.height = Math.round(h * px);

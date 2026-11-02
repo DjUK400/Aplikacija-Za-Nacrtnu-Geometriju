@@ -1,10 +1,10 @@
-# Rješavač ortogonalnih projekcija
+# Rješavač nacrtne geometrije
 
 > Dio kolekcije **Aplikacije za fakultet**: https://djuk400.github.io/
 
 **Otvori sajt:** https://djuk400.github.io/Aplikacija-Za-Nacrtnu-Geometriju/
 
-Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upišeš postavu zadatka onako kako piše na listu, a sajt prepozna tačke, prave, ravni i likove i riješi zadatak u **ortogonalnoj (Mongeovoj) projekciji**, korak po korak, s objašnjenjem svakog koraka.
+Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upišeš postavu zadatka onako kako piše na listu, a sajt prepozna tačke, prave, ravni i likove i riješi zadatak u **ortogonalnoj (Mongeovoj)** ili **kosoj projekciji** (izbor „Riješi u” iznad dugmeta Riješi), korak po korak, s objašnjenjem svakog koraka.
 
 ## Šta rješava
 - Prava: tri projekcije, prodori kroz H, F i P, vidljivost, oktanti, prava veličina i nagibni uglovi
@@ -18,7 +18,7 @@ Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upiš
 U meniju „Primjer sa listova” su zadaci sa K1 kolokvijuma (2020–2023) i listova za vježbu.
 
 ## Ograničenja
-- Kosa projekcija nije podržana; sajt to javi i prikaže rješenje u ortogonalnoj.
+- U kosoj projekciji se crta rezultat u prostoru (tačke, prave, tragovi, likovi, presjeci) sa podesivim uglom (−xy) i skraćenjem ose y. Obaranje, prava veličina i transformacija crtaju se samo u ortogonalnoj.
 - Nisu podržani: tijela (prizma, piramida, valjak, kupa, lopta), rotacija, kolineacija.
 - Osa x ide udesno od O. Ako je na vježbama obrnuto, u opcijama izaberi „Osa x: ulijevo”.
 - Rezultate provjeri na crtežu prije predaje.
