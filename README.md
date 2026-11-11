@@ -13,13 +13,15 @@ Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upiš
 - Presjek ravni, prodor prave kroz ravan ili lik, presjek dva lika (trougao, paralelogram, četvorougao) s međusobnom vidljivošću
 - Udaljenosti: tačke od ravni, od traga, između paralelnih ravni
 - Obaranje ravni, prava veličina lika, centar upisane / opisane kružnice
-- Metoda transformacije: presjek likova, udaljenost tačke od ravni, prava veličina lika
+- Metoda transformacije: presjek likova, udaljenost tačke od ravni, prava veličina lika, prodori presječne prave
+- Simetrična duž u odnosu na ravan lika, nagibni triedar, tačke ravni na zadatoj udaljenosti od H ili F
+- Tijela: pravilna piramida (iz centra osnove i vrha), kocka iz ivice, kružni konus i njegov presjek ravni (vrsta krive, konturne tačke, tangente, dio tijela s jedne strane ravni, uslov parabole) — u ortogonalnoj i kosoj projekciji, s vidljivošću
 
-U meniju „Primjer sa listova” su zadaci sa K1 kolokvijuma (2020–2023) i listova za vježbu.
+U meniju „Primjer sa listova” su zadaci sa K1 kolokvijuma (2020–2023), kolokvijuma iz geodezije (E4, E5) i listova za vježbu.
 
 ## Ograničenja
 - U kosoj projekciji se crta rezultat u prostoru (tačke, prave, tragovi, likovi, presjeci) sa podesivim uglom (−xy) i skraćenjem ose y. Obaranje, prava veličina i transformacija crtaju se samo u ortogonalnoj.
-- Nisu podržani: tijela (prizma, piramida, valjak, kupa, lopta), rotacija, kolineacija.
+- Nisu podržani: prizma, valjak, lopta, presjeci piramide i kocke, rotacija, kolineacija, kotirana projekcija (plato, usjeci i nasipi).
 - Osa x ide udesno od O. Ako je na vježbama obrnuto, u opcijama izaberi „Osa x: ulijevo”.
 - Rezultate provjeri na crtežu prije predaje.
 
