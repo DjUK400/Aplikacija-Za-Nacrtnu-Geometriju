@@ -172,6 +172,8 @@ sub, sup { font-size: .72em; line-height: 0; }
 .ngsvg .tri.fillonly { stroke: none; }
 .ngsvg .tri.thin, .ngsvg .tri0.thin { stroke-width: .05em; }
 .ngsvg .edge { stroke: var(--ink); stroke-width: .08em; stroke-linecap: round; }
+.ngsvg .body { stroke: var(--ink); stroke-width: .1em; stroke-linecap: round; fill: none; }
+.ngsvg .body.dash { stroke-width: .07em; }
 .ngsvg .ax14 { stroke: var(--ink); stroke-width: .06em; stroke-dasharray: 1.2em .25em .15em .25em; }
 .ngsvg .circ { fill: none; stroke: var(--obo); stroke-width: .07em; }
 .ngsvg .tri0 { fill: var(--tri0); stroke: var(--obo); stroke-width: .08em; stroke-linejoin: round; }
@@ -507,7 +509,7 @@ function parseNum(s) {
 function splitCoords(inner) {
   inner = inner.trim();
   let parts;
-  if (inner.indexOf(';') >= 0) parts = inner.split(';');
+  if (inner.indexOf(';') >= 0) { parts = inner.split(';'); if (parts.length === 2) parts = [].concat(...parts.map(p => p.split(/,\s+/))); }
   else {
     const c = (inner.match(/,/g) || []).length;
     if (c === 2) parts = inner.split(',');
@@ -535,7 +537,11 @@ function parseText(raw) {
   let m;
   const reRav = new RegExp(PRE + '[Rr]avn?[a-zčćšžđ]*\\s+([A-Za-zα-ω])' + NL, 'g');
   const ravSeq = [];
-  while ((m = reRav.exec(text))) { if (/[A-Zα-ω]/.test(m[2])) { planeNames.add(m[2]); ravSeq.push(m[2]); } reRav.lastIndex = m.index + m[0].length - 1; }
+  while ((m = reRav.exec(text))) {
+    if (/[A-Zα-ω]/.test(m[2])) { planeNames.add(m[2]); ravSeq.push(m[2]); }
+    else if (/^\s*\(/.test(text.slice(m.index + m[0].length))) planeNames.add(m[2]);
+    reRav.lastIndex = m.index + m[0].length - 1;
+  }
   const reTac = new RegExp(PRE + '[Tt]a[čc]k[a-zčćšžđ]*\\s+([A-Z])' + NL, 'g');
   while ((m = reTac.exec(text))) { pointNames.add(m[2]); reTac.lastIndex = m.index + m[0].length - 1; }
 
@@ -573,6 +579,7 @@ function parseText(raw) {
     else if (i > 0 && toks[i - 1].kind === 'plane' && /^[\s,;·]*(i\s+)?[\s,;·]*$/i.test(text.slice(toks[i - 1].end, t.start))) k = 'plane';
     else k = 'point';
     t.kind = k; kindOf[t.name] = k;
+    if (k === 'plane' && /^[a-z]$/.test(t.name)) t.name = t.name.toUpperCase(); // „ravan t (…)” je ravan T
   });
   out.toks = toks;
   toks.forEach(t => {
@@ -648,7 +655,7 @@ function parseText(raw) {
   }
   const reEq = new RegExp(PRE + '([a-z])\\s*=\\s*([A-Z])([A-Z])' + NL, 'g');
   while ((m = reEq.exec(text))) specs.push({ name: m[2], pts: [m[3], m[4]], start: m.index });
-  const reLN = new RegExp(PRE + '(?:[Pp]rav|[Dd]u[žz])[a-zčćšžđ]*\\s+(?:([a-z])\\s*[,:=]?\\s*)?([A-Z])([A-Z])' + NL, 'g');
+  const reLN = new RegExp(PRE + '(?:[Pp]rav|[Dd]u[žz])[a-zčćšžđ]*\\s+(?:([a-z])\\s*[,:=]?\\s*)?([A-Z]\\d?)([A-Z]\\d?)(?![\\d' + LET + '])', 'g');
   while ((m = reLN.exec(text))) specs.push({ name: m[2] || null, pts: [m[3], m[4]], start: m.index, seg: /^(.)?[Dd]u/.test(m[0].trim()) });
   const reLK = new RegExp(PRE + '[Pp]rav[a-zčćšžđ]*\\s+(?:([a-z])\\s+)?(?:koja\\s+)?(?:prolazi\\s+)?(?:kroz|odre[dđ][a-zčćšž]*|zadat[a-zčćšž]*)\\s+ta[čc]k[a-zčćšžđ]*\\s+([A-Z])(?:\\s*\\([^()]*\\))?\\s*(?:,|i)\\s*([A-Z])' + NL, 'g');
   while ((m = reLK.exec(text))) specs.push({ name: m[2] || null, pts: [m[3], m[4]], start: m.index });
@@ -756,8 +763,43 @@ function parseText(raw) {
         return;
       }
     }
-    if (!out.planeAngles[pl.name]) out.warnings.push(`Ravan ${pl.name} ima nepoznat odsječak, a nije zadat uslov (paralelnost ili ugao) iz kojeg se on određuje.`);
+    if (!out.planeAngles[pl.name] && !(/parabol/.test(low) && /konus|kupa/.test(low))) out.warnings.push(`Ravan ${pl.name} ima nepoznat odsječak, a nije zadat uslov (paralelnost ili ugao) iz kojeg se on određuje.`);
   });
+
+  /* tijela */
+  const pyr = /pravil[a-zčćšž]*\s+(tro|[čc]etvoro|peto|[šs]esto)stran[a-zčćšž]*\s+piramid[a-zčćšž]*\s+([A-Z]{4,7})/i.exec(text) || /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text) && [null, 'tro', /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text)[1]];
+  if (pyr) {
+    const nmap = { tro: 3, 'četvoro': 4, cetvoro: 4, peto: 5, 'šesto': 6, sesto: 6 };
+    const letters = pyr[2].split(''), apex = letters[letters.length - 1];
+    const cen = (/ta[čc]k[a-zčćšž]*\s+([A-Z])\s+(?:je\s+)?(?:sredi[šs]te|centar|te[žz]i[šs]te)/.exec(text) || [])[1] || out.order.find(n => !letters.includes(n));
+    const am = /(?:stranic[a-zčćšž]*|ivic[a-zčćšž]*)\s+(?:osnove|baze|bazisa)[^.]*?(\d+(?:[.,]\d+)?)\s*cm/.exec(low) || /\ba\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
+    out.solid = { type: 'pyr', n: nmap[pyr[1].toLowerCase()] || letters.length - 1, base: letters.slice(0, -1), apex, center: cen, a: am ? num(am[1]) : null, lower: !/vi[šs]a\s+od\s+suprotn/.test(low) };
+  }
+  const cube = /kock[a-zčćšž]*\s+([A-Z])([A-Z])([A-Z])([A-Z])\s*[A-Z]1/.exec(text);
+  if (cube) {
+    const B = [cube[1], cube[2], cube[3], cube[4]];
+    const em = /([A-Z])\s*\1\s*1/.exec(text.replace(/kock[^.]*$/, '')) || /du[žz]\s+([A-Z])([A-Z])1/.exec(text);
+    const e0 = em ? em[1] : B[0];
+    const cm = /tjem[a-zčćšž]*\s+([A-Z])\s+le[žz]i\s+u\s+(frontalnic|horizontalnic|profilnic)/i.exec(text);
+    const cond = cm ? { v: cm[1], c: /frontal/.test(cm[2]) ? 'y' : /horizontal/.test(cm[2]) ? 'z' : 'x', w: /frontal/.test(cm[2]) ? 'frontalnici' : /horizontal/.test(cm[2]) ? 'horizontalnici' : 'profilnici' } : null;
+    out.solid = { type: 'cube', base: B, e0, e1: e0 + '1', cond };
+  }
+  if (/konus|kupa\b|kupe\b/.test(low)) {
+    const rm = /\br\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
+    const vm = /vrh[a-zčćšž]*\s+([A-Z])(?![a-zčćšž])/.exec(text);
+    const cm2 = /centar[a-zčćšž]*\s+(?:kru[žz]nice\s+|baze\s+|osnove\s+)?([A-Z])(?![a-zčćšž])/.exec(text);
+    const apex = vm ? vm[1] : 'V';
+    out.solid = { type: 'cone', r: rm ? num(rm[1]) : null, apex, center: cm2 ? cm2[1] : out.order.find(n => n !== apex) };
+  }
+  /* simetrična duž */
+  const rf = /simetri[čc]n[a-zčćšž]*\s+du[žz]\s+([A-Z])1\s*([A-Z])1\s+u\s+odnosu\s+na\s+ravan\s+(?:paralelograma|trougla|[čc]etvorougla|lika)?\s*([A-Z]{3,4})?/i.exec(text);
+  if (rf) out.refl = { src: [rf[1], rf[2]], dst: [rf[1] + '1', rf[2] + '1'], poly: rf[3] || null };
+  /* nagibni triedar */
+  const tdm = /(prv|drug)[a-zčćšž]*\s+nagibn[a-zčćšž]*\s+tri?jedar\s+ravni\s+([A-Za-zα-ω])\s+u\s+ta[čc]k[a-zčćšž]*\s+([A-Z])/i.exec(text) || /(prv|drug)[a-zčćšž]*\s+nagibn[a-zčćšž]*\s+triedar\s+ravni\s+([A-Za-zα-ω])\s+u\s+ta[čc]k[a-zčćšž]*\s+([A-Z])/i.exec(text);
+  if (tdm) out.triedar = { k: /prv/i.test(tdm[1]) ? 1 : 2, plane: tdm[2].length === 1 && /[a-z]/.test(tdm[2]) ? tdm[2].toUpperCase() : tdm[2], point: tdm[3] };
+  /* tačke ravni na zadatoj udaljenosti od H ili F */
+  const lv = /ta[čc]k[a-zčćšž]*\s+u\s+ravni\s+([A-Za-zα-ω])\s+koj[a-zčćšž]*\s+su\s+(\d+(?:[.,]\d+)?)\s*cm\s+(ispred|iza|iznad|ispod)\s+(frontalnic|horizontalnic)/i.exec(text);
+  if (lv) { const w = lv[3].toLowerCase(), v0 = num(lv[2]); out.level = { plane: /[a-z]/.test(lv[1]) && lv[1].length === 1 && !/[α-ω]/.test(lv[1]) ? lv[1].toUpperCase() : lv[1], c: /frontal/i.test(lv[4]) ? 'y' : 'z', v: (w === 'iza' || w === 'ispod') ? -v0 : v0, word: `${w} ${/frontal/i.test(lv[4]) ? 'frontalnice' : 'horizontalnice'}` }; }
 
   out.flags = {
     show3: /tre[ćc][aeiou]|tri\s+(ortogonaln|projekc)|profiln[a-z]*\s+projekc|\bp‴|tre[ćc]u\s+projek/.test(low),
@@ -767,7 +809,7 @@ function parseText(raw) {
       const r = {};
       const a = /\(\s*-?\s*xy\s*\)\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low) || /-\s*xy\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
       if (a) { let d = num(a[1]); if (d > 90 && d % 10 === 0 && d / 10 <= 90 && !/°/.test(low.slice(a.index, a.index + a[0].length + 2))) d = d / 10; if (d > 0 && d < 180) r.deg = d; }
-      const k = /\(\s*(\d+)\s*:\s*(\d+)\s*\)/.exec(low) || /y\s*:\s*y_?k\s*=\s*(\d+)\s*:\s*(\d+)/.exec(low);
+      const k = /\(\s*(\d+)\s*:\s*(\d+)\s*\)/.exec(low) || /y\s*:\s*y_?k\s*=\s*(\d+)\s*:\s*(\d+)/.exec(low) || /y_?k\s*=\s*(\d+)\s*:\s*(\d+)/.exec(low);
       if (k && +k[1] && +k[2]) { const q = (+k[1]) / (+k[2]); if (q > 0 && q <= 1) r.k = q; }
       return r;
     })()
@@ -808,7 +850,8 @@ function detectTasks(P) {
   if (P.order.some(n => P.points[n].unknown.length) || Object.values(P.planes).some(p => p.unk)) T.nepoznata = true;
   if (has(/prodor|prodir|probod|probad/)) {
     const viaPlane = (nPl || nTri) && !/prodor[a-zčćšž]*\s+(prave\s+)?kroz\s+(projekcijsk|horizontalnic|frontalnic|profilnic|ravni\s+projekc)/.test(low);
-    if (viaPlane) T.prodor = true;
+    if (/prodor[a-zčćšž]*\s+presje[čc]n[a-zčćšž]*\s+prav/.test(low)) T.prodoriS = true;
+    else if (viaPlane) T.prodor = true;
     if (!viaPlane || /projekcijsk|horizontalnic|frontalnic/.test(low.replace(/prodor[^.]*?trougl[^.]*/g, ''))) if (nLines) T.prodori = true;
   }
   if (has(/tragov[ea]?\s+(te\s+|date\s+)?prav|trag(ove)?\s+prav/)) T.prodori = true;
@@ -818,7 +861,8 @@ function detectTasks(P) {
   if (has(/frontal(a|u|e|om|i)\b/)) T.frontala = true;
   if (has(/presj|presek|prese[čc]|presije|sijeku|sjeku/)) T.presjek = true;
   const ud = /(?:udaljenost|rastojanj[a-zčćšž]*|odstojanj[a-zčćšž]*)\s+ta[čc]k[a-zčćšž]*\s+([a-z])(?![a-zčćšž])/.exec(low);
-  if (has(/udaljenost|rastojanj|odstojanj/)) T.udaljenost = true;
+  if (has(/udaljenost|rastojanj|odstojanj/) && !/(prav[a-zčćšž]*\s+veli[čc]in[a-zčćšž]*\s+)?(rastojanj|udaljenost)[a-zčćšž]*\s+izme[đd]u\s+ta[čc]aka/.test(low)) T.udaljenost = true;
+  if (/(rastojanj|udaljenost)[a-zčćšž]*\s+izme[đd]u\s+ta[čc]aka/.test(low)) T.pv = T.pv || true;
   if (ud) T.udPoint = ud[1].toUpperCase();
   const tr = /od\s+traga\s+([a-zα-ω])\s*_?\s*([12])/.exec(low);
   if (tr && T.udaljenost) { T.udTrag = { k: +tr[2] }; delete T.udaljenost; }
@@ -855,6 +899,7 @@ function detectTasks(P) {
   // uglovi
   S.forEach((s, i) => {
     if (!/(^|[^a-zčćšž])(ugao|ugl[aoue][a-zčćšž]*)|(^|[^a-zčćšž])nagib(?!nic)/.test(s)) return;
+    if (/tri?jedar|triedar|konus|kosa\s+projekcija|-\s*xy/.test(s)) return;
     if (/kroz\s+ta[čc]k[a-zčćšž]*\s+[a-z]\s+(postavi|nacrta|povu)/.test(s)) return;
     if (/ravan\s+[a-zα-ω](?![a-zčćšž])[^.]*\d+\s*(°|stepen)|(\d+)\s*(°|stepen)[^.]*ravan/.test(s) && /gradi|zaklapa|je\s+\d/.test(s) && Object.keys(P.planeAngles).length) return;
     const H = /horizontaln|prv[aou]m?\s+ravn|\bh\b|π1|horizontalnic/.test(s);
@@ -872,7 +917,7 @@ function detectTasks(P) {
   if (T.pv === true) T.pv = { angH: true, angF: false };
   if (T.pv && T.pv.angH === undefined) T.pv.angH = true;
   // trougao: prava veličina = obaranje (ili transformacija)
-  if (T.pv && nTri && S.some(s => /prav[a-zčćšž]*\s+veli[čc]in[a-zčćšž]*\s+(trougl|lik|paralelogram)/.test(s))) {
+  if (T.pv && nTri && S.some(s => /prav[a-zčćšž]*\s+veli[čc]in[a-zčćšž]*\s+(trougl|lik|paralelogram)/.test(s) || (/prav[a-zčćšž]*\s+veli[čc]in/.test(s) && /\s(i|,)\s+(trougl|paralelogram|[čc]etvorougl)[a-zčćšž]*\s+[a-z]{3,4}\b/.test(s)))) {
     if (!S.some(s => /prav[a-zčćšž]*\s+veli[čc]in[a-zčćšž]*\s+du[žz]/.test(s))) delete T.pv;
     if (T.transf && T.transf.pv) T.transfPV = true; else T.obaranje = T.obaranje || 1;
   }
@@ -881,12 +926,32 @@ function detectTasks(P) {
   if (T.transf && T.transf.pv && nTri) { T.transfPV = true; if (!S.some(s => /obaranj|obor/.test(s))) delete T.obaranje; }
   if (T.transf && T.transf.presjek) T.transfPresjek = true;
   // ravan trougla za obaranje / tragove / udaljenost
-  if ((T.obaranje || T.transfPV || T.krug) && nTri && !P.planeOrder.length && !P.planeDefs.length) P.planeDefs.push({ name: null, points: P.tris[0].v.slice(), tri: P.tris[0].name });
+  const pvm = /prav[a-zčćšž]*\s+veli[čc]in[a-zčćšž]*\s+(?:trougl[a-zčćšž]*|paralelogram[a-zčćšž]*|[čc]etvorougl[a-zčćšž]*)\s+([A-Z]{3,4})/.exec(P.text.replace(/\u010d|\u010c/g, 'c'));
+  if (pvm && P.tris.some(t => t.name === pvm[1])) T.pvTri = pvm[1];
+  const pvT = P.tris.find(t => t.name === T.pvTri) || P.tris[0];
+  if ((T.obaranje || T.transfPV || T.krug) && nTri && !P.planeOrder.length && !P.planeDefs.some(d => d.tri === pvT.name)) P.planeDefs.push({ name: null, points: pvT.v.slice(), tri: pvT.name });
   if (has(/tragov[a-zčćšž]*\s+ravni\s+troug|ravan\s+troug|ravni\s+troug/) && nTri && !P.planeDefs.length) P.planeDefs.push({ name: null, points: P.tris[0].v.slice(), tri: P.tris[0].name });
   // podrazumijevano
   const any = Object.keys(T).filter(k => k !== 'nepoznata' && k !== 'vidljivost').length;
   if (nLines && !T.normalnaRavan && !T.simetralna && !T.prodor && (!any || T.oktanti || T.vidljivost) && !(nTri >= 2)) T.prodori = true;
   if (T.prodori && !nLines) delete T.prodori;
+  // tijela i ostalo sa E4/E5 listova
+  if (P.solid) {
+    T.solid = P.solid.type; delete T.prodori; delete T.prodor; delete T.oktanti;
+    if (P.solid.type === 'cone') {
+      if (/presj|presek|presije|sije[čc]e/.test(low)) T.conePresjek = true;
+      delete T.presjek;
+      if (/tangent/.test(low)) T.tangente = true;
+      if (/kontur/.test(low)) T.kontur = true;
+      const cs = /dio\s+(lijevo|desno|levo)\s+od\s+presje[čc]n/.exec(low);
+      if (cs) T.coneCut = cs[1] === 'desno' ? 'desno' : 'lijevo';
+      delete T.pv; delete T.nagibnice;
+    }
+  }
+  if (P.refl) { T.refl = P.refl; delete T.simetralna; }
+  if (P.triedar) { T.triedar = P.triedar; delete T.nagibnice; }
+  if (P.level) { T.level = P.level; delete T.frontala; delete T.horizontala; }
+  if (T.prodoriS) { delete T.prodor; delete T.prodori; }
   return T;
 }
 
@@ -1091,6 +1156,7 @@ class Solver {
       }
     }
     if ((this.T.pravaUgao || []).some(sp => sp.par === 'P')) need = true;
+    if (this.T.prodoriS && /kroz\s+h\s*,?\s*f\s+i\s+p\b/.test(this.P.low)) need = true;
     if (need) { this.show3 = true; this.note('Uključena je treća projekcija jer je potrebna za konstrukciju.'); }
   }
 
@@ -1118,7 +1184,7 @@ class Solver {
         if (vb.z) parts.push(`z = ${fmt(p.P.z)} (${p.P.z > 0 ? 'iznad' : 'ispod'} horizontalnice)`);
         this.say(`Položaj tačke ${n} zadat riječima: ${parts.join(', ')}, pa je ${n}${fP(p.P)}.`);
       }
-      if (p.fromPar) this.say(`Vrh ${n} paralelograma ${p.fromPar} dobija se iz uslova da se dijagonale polove: ${n}${fP(p.P)}.`);
+      if (p.fromPar) { this.say(`Vrh ${n} paralelograma ${p.fromPar} dobija se iz uslova da se dijagonale polove: ${n}${fP(p.P)}.`); this.res1(`Tačka ${n}`, `${n}${fP(p.P)} (dijagonale paralelograma se polove)`); }
       if (p.prodor) this.say(`${n} je zadati prodor prave ${p.prodor.line} kroz ${['', 'H', 'F', 'P'][p.prodor.k]} (na listu ${p.prodor.orig}): ${n}${fP(p.P)}.`);
     });
     if (known.length && known.length <= 3) known.forEach(n => this.say(this.descPoint(this.pts[n].P, n)));
@@ -1365,7 +1431,7 @@ class Solver {
   }
   opPV() {
     const T = this.T.pv || {};
-    let segs = this.lines.filter(L => !L.pending && L.pts && L.pts.length === 2);
+    let segs = this.reflSeg ? [{ pts: this.reflSeg }] : this.lines.filter(L => !L.pending && L.pts && L.pts.length === 2);
     if (!segs.length) {
       const k = Object.values(this.pts).filter(p => p.P);
       if (k.length >= 2) segs = [{ pts: [k[0].name, k[1].name] }];
@@ -1948,7 +2014,7 @@ class Solver {
   }
   opObaranje() {
     const m = this.T.obaranje === 2 ? 2 : 1, o = 3 - m;
-    const pl = this.planes.find(p => p.n && !p.pending && p.triPlane) || this.planes.find(p => p.n && !p.pending && !p.derived) || this.planes.find(p => p.n);
+    const pl = (this.T.pvTri && this.planes.find(p => p.n && !p.pending && p.triPlane === this.T.pvTri)) || this.planes.find(p => p.n && !p.pending && p.triPlane) || this.planes.find(p => p.n && !p.pending && !p.derived) || this.planes.find(p => p.n);
     if (!pl) return;
     this.ensureTraces(pl);
     const N = pl.name, tr = pl.tr[m];
@@ -2075,6 +2141,20 @@ class Solver {
     this.base();
     const T = this.T;
     this.needTriTraces = /tragov/.test(this.P.low.replace(/ne\s+odre[dđ]uju[ćc]i\s+tragov\S*/g, '')) || !!T.paralelna || !!T.obaranje || !!T.nagibnice || (!!T.udaljenost && !T.transfPV);
+    if (T.solid === 'cone' && /parabol/.test(this.P.low)) {
+      const sd = this.P.solid, C = this.pts[sd.center] && this.pts[sd.center].P, Vx = this.pts[sd.apex] && this.pts[sd.apex].P;
+      const up = this.planes.find(p => p.unk);
+      if (C && Vx && sd.r && up) {
+        if (Math.hypot(Vx.x - C.x, Vx.y - C.y) < 1e-9) {
+          const deg = Math.atan2(Math.abs(Vx.z - C.z), sd.r) * 180 / Math.PI;
+          const ints0 = up.ints, ia = isFinite(ints0[0]) ? 1 / ints0[0] : 0, ib = isFinite(ints0[1]) ? 1 / ints0[1] : 0;
+          const cc = Math.tan(deg * Math.PI / 180) / Math.hypot(ia, ib);
+          const size = sg => { const n = V(ia, ib, 1 / (sg * cc)); let best = 0; for (let i = 0; i < 360; i++) { const th = 2 * Math.PI * i / 360, B0 = V(C.x + sd.r * Math.cos(th), C.y + sd.r * Math.sin(th), C.z), dn = dot(n, sub(Vx, B0)); if (Math.abs(dn) < 1e-12) continue; const t = (1 - dot(n, B0)) / dn; if (t >= 0 && t <= 1) best = Math.max(best, t); } return best; };
+          this.P.planeAngles[up.name] = { ref: 'H', deg, sign: size(-1) > size(1) ? -1 : 1 };
+          this.coneParabNote = ` Uslov parabole: ravan je paralelna sa jednom izvodnicom, pa je njen nagib prema H jednak nagibu izvodnica: tg φ = h / r = ${fmt(Math.abs(Vx.z - C.z))} / ${fmt(sd.r)}, φ = ${fmt(deg, 1)}°.`;
+        } else this.note('Uslov parabole je podržan samo za uspravan konus.');
+      }
+    }
     this.planes.filter(p => p.unk).forEach(p => this.opPlaneAngle(p));
     if (T.nepoznata) this.opUnknown();
     this.drawLate();
@@ -2083,8 +2163,13 @@ class Solver {
     (T.pravaUgao || []).forEach(sp => this.opPravaUgao(sp));
     if (T.ravanNagibnica) this.opRavanNagibnica(T.ravanNagibnica);
     if (T.horizontala || T.frontala) this.opHorFront();
+    if (T.solid === 'pyr') this.opPyramid(this.P.solid);
+    if (T.solid === 'cube') this.opCube(this.P.solid);
+    if (T.solid === 'cone') this.opCone(this.P.solid);
     if (T.transfPresjek) this.opTransfPresjek();
-    else if (T.presjek) this.opPresjek();
+    else if (T.presjek && !T.solid) this.opPresjek();
+    if (T.prodoriS) this.opProdoriS();
+    if (T.refl) this.opRefl(T.refl);
     if (T.prodor) this.opProdor();
     if (T.oktanti) {
       const ls = this.lines.filter(L => L.given && !L.pending);
@@ -2099,6 +2184,8 @@ class Solver {
     if (T.pv) this.opPV();
     if (T.paralelna) this.opParalelna();
     if (T.normalnaRavan) this.opNormalnaRavan();
+    if (T.triedar) this.opTriedar(T.triedar);
+    if (T.level) this.opPlaneLevel(T.level);
     if (T.simetralna) this.opSimetralna();
     if (T.nagibnice) this.opNagibnice();
     if (T.obaranje) this.opObaranje();
@@ -2111,11 +2198,19 @@ class Solver {
   finalize() {
     const all = [];
     this.steps.forEach((s, i) => s.els.forEach(e => { e.step = i; all.push(e); }));
+    all.slice().forEach(e => {
+      if (e.k !== 'G3') return;
+      [1, 2].concat(this.show3 ? [3] : []).forEach(m => {
+        const g = e.gen(this.viewVec(m));
+        g.lines.forEach(ln => { if (ln.pts.length >= 2) all.push({ k: 'PL', pts: ln.pts.map(P => this.pr(P, m)), cls: ln.cls + (ln.solid ? '' : ' dash'), step: e.step, until: e.until }); });
+        (g.pts || []).forEach(q => all.push({ k: 'P', p: this.pr(q.P, m), lab: q.lab ? q.lab + ['', '′', '″', '‴'][m] : null, cls: q.cls || 'pt', step: e.step, until: e.until }));
+      });
+    });
     const pts = [[0, 0]];
     all.forEach(e => {
       if (e.k === 'P' || e.k === 'T') pts.push(e.p);
       if (e.k === 'S') pts.push(e.a, e.b);
-      if (e.k === 'Poly') e.pts.forEach(p => pts.push(p));
+      if (e.k === 'Poly' || e.k === 'PL') e.pts.forEach(p => pts.push(p));
       if (e.k === 'C') pts.push([e.c[0] - e.r, e.c[1] - e.r], [e.c[0] + e.r, e.c[1] + e.r]);
       if (e.k === 'A') pts.push(e.c);
     });
@@ -2211,7 +2306,7 @@ Object.assign(Solver.prototype, {
     const ia = isFinite(a) ? 1 / a : 0, ib = isFinite(b) ? 1 / b : 0;
     const nxy = Math.hypot(ia, ib);
     if (nxy < EPS || phi <= 0 || phi >= Math.PI / 2) { this.note(`Ravan ${pl.name}: ugao mora biti između 0° i 90°.`); return; }
-    const c = Math.tan(phi) / nxy;
+    const c = Math.tan(phi) / nxy * (ang.sign || 1);
     ints[ui] = c;
     const np = planeFromInts(pl.name, ints[0], ints[1], ints[2]);
     Object.assign(pl, np, { show: true }); delete pl.unk;
@@ -2237,7 +2332,7 @@ Object.assign(Solver.prototype, {
     this.lineEl(tr[o], o, 'tr' + o + ' res', `${N}_${o}`, { vis: 'oct', trace: true });
     this.say(`${N}_${m} je zadat odsječcima ${fmt(a)} i ${fmt(b)}. Ugao ravni sa ${ref} je ugao njene ${m === 1 ? 'prve' : 'druge'} nagibnice. Nagibnica kroz tačku ${qn} na ${m === 1 ? 'z' : 'y'} osi ima projekciju iz O okomitu na ${N}_${m}; njeno podnožje je ${fmt(dON)} cm od O. Nad tom dužinom se nanese ugao φ = ${fmt(ang.deg, 1)}°, pa je |O${qn}^0| = ${fmt(dON)} · tg φ = ${fmt(c)} cm. Luk iz O prenosi tu dužinu na ${m === 1 ? 'z' : 'y'} osu (${qn}${m === 1 ? '″' : '′'}), a ${N}_${o} prolazi kroz X i ${qn}${m === 1 ? '″' : '′'}.`);
     this.res1(`Ravan ${N}`, `${N}(${ints.map(v => fmt(v)).join('; ')}), ${niceEq(pl)}`);
-    this.note(`Ravan ${N}: uzet je pozitivan odsječak; i ${N}(${ints.map((v, i) => i === ui ? fmt(-v) : fmt(v)).join('; ')}) zaklapa isti ugao.`);
+    this.note(`Ravan ${N}: uzet je odsječak ${fmt(c)}${ang.sign ? ' (daje veći presjek)' : ''}; i ${N}(${ints.map((v, i) => i === ui ? fmt(-v) : fmt(v)).join('; ')}) zaklapa isti ugao.`);
   },
   /* prave čije su tačke postale poznate tek u toku rješavanja */
   drawLate() {
@@ -2690,6 +2785,390 @@ Object.assign(Solver.prototype, {
   }
 });
 
+/* ---------------- tijela, simetrija, triedar (E4, E5) ---------------- */
+Object.assign(Solver.prototype, {
+  viewVec(m) { return m === 1 ? V(0, 0, 1) : m === 2 ? V(0, 1, 0) : V(-this.sx, 0, 0); },
+
+  /* konveksni poliedar: vidljiva je ivica čija bar jedna susjedna strana gleda ka posmatraču */
+  polyhedron(verts, faces) {
+    const names = Object.keys(verts);
+    const cen = mul(names.reduce((s, n) => add(s, verts[n]), V(0, 0, 0)), 1 / names.length);
+    const F = faces.map(f => {
+      const P = f.map(n => verts[n]);
+      let nn = cross(sub(P[1], P[0]), sub(P[2], P[0]));
+      const fc = mul(P.reduce((s, q) => add(s, q), V(0, 0, 0)), 1 / P.length);
+      if (dot(nn, sub(fc, cen)) < 0) nn = mul(nn, -1);
+      return { f, n: unit(nn) };
+    });
+    const edges = [];
+    F.forEach((fa, fi) => fa.f.forEach((a, i) => {
+      const b = fa.f[(i + 1) % fa.f.length];
+      let e = edges.find(x => (x.a === a && x.b === b) || (x.a === b && x.b === a));
+      if (!e) { e = { a, b, fs: [] }; edges.push(e); }
+      e.fs.push(fi);
+    }));
+    const vis = (e, view) => e.fs.some(fi => dot(F[fi].n, view) > 1e-9);
+    this.el({ k: 'G3', gen: view => ({ lines: edges.map(e => ({ pts: [verts[e.a], verts[e.b]], solid: vis(e, view), cls: 'body' })), pts: [] }) });
+    return { edges, F, vis };
+  },
+  hiddenEdgesText(ph) {
+    const t = [];
+    [1, 2].forEach(m => {
+      const v = this.viewVec(m);
+      const hid = ph.edges.filter(e => !ph.vis(e, v)).map(e => e.a + e.b);
+      const pp = m === 1 ? '′' : '″';
+      t.push(`U ${m === 1 ? 'prvoj projekciji (pogled odozgo)' : 'drugoj projekciji (pogled sprijeda)'} vidljive su ivice strana okrenutih ${m === 1 ? 'naviše' : 'naprijed'}; ${hid.length ? 'nevidljive (isprekidane) su ' + hid.map(x => x.replace(/([A-Z]\d?)([A-Z]\d?)/, `$1${pp}$2${pp}`)).join(', ') : 'nema nevidljivih ivica'}.`);
+    });
+    return t.join(' ');
+  },
+
+  /* pravilna piramida: centar osnove S, vrh V, jedna stranica osnove horizontalna */
+  opPyramid(sd) {
+    const S = this.pts[sd.center] && this.pts[sd.center].P, Vx = this.pts[sd.apex] && this.pts[sd.apex].P;
+    if (!S || !Vx) { this.note('Za piramidu nisu zadati centar osnove i vrh.'); return; }
+    const n = sd.n, hv = sub(Vx, S), H = len(hv), nv = unit(hv);
+    let a = sd.a, aNote = '';
+    if (!a) {
+      a = n === 3 ? H * Math.sqrt(1.5) : H;
+      aNote = n === 3 ? ` Dužina stranice osnove nije zadata, pa je uzeta pravilna piramida kojoj su sve ivice jednake (tetraedar): a = h·√(3/2) = ${fmt(a)} cm. Ako je stranica zadata, dopiši je u postavu (npr. „stranica osnove a = 6 cm”).` : ` Dužina stranice osnove nije zadata, pa je uzeto a = h = ${fmt(a)} cm. Ako je stranica zadata, dopiši je u postavu (npr. „stranica osnove a = 6 cm”).`;
+    }
+    let hd = cross(nv, EZ);
+    if (len(hd) < 1e-9) hd = EX; hd = unit(hd);
+    let ud = unit(cross(nv, hd));
+    if (sd.lower ? ud.z < 0 : ud.z > 0) ud = mul(ud, -1); // „niža stranica”: suprotno tjeme je više
+    const R = a / (2 * Math.sin(Math.PI / n));
+    const base = sd.base, verts = {};
+    base.forEach((nm, k) => {
+      const ang = -Math.PI / 2 - Math.PI / n + 2 * Math.PI * k / n;
+      verts[nm] = add(S, add(mul(hd, R * Math.cos(ang)), mul(ud, R * Math.sin(ang))));
+    });
+    verts[sd.apex] = Vx;
+    // 1) ravan osnove i horizontala
+    this.step('Ravan osnove i horizontala kroz S', 'Ravan osnove');
+    const hN = this.freeL('h');
+    const hL = mkLine(hN, S, hd, 'aux'); hL.rel.push(-R, R);
+    this.lineEl(hL, 1, 'aux', null, { vis: 'all' }); this.lineEl(hL, 2, 'aux', null, { vis: 'all' });
+    const vs = mkLine('v', S, hv, 'aux'); vs.rel.push(0, 1);
+    this.lineEl(vs, 1, 'nor', `${sd.center}′${sd.apex}′`, { vis: 'all' }); this.lineEl(vs, 2, 'nor', `${sd.center}″${sd.apex}″`, { vis: 'all' });
+    this.say(`Visina ${sd.center}${sd.apex} je okomita na osnovu, pa osnova leži u ravni koja prolazi kroz ${sd.center} i okomita je na ${sd.center}${sd.apex} (h = |${sd.center}${sd.apex}| = ${fmt(H)} cm). Horizontala ${hN} te ravni kroz ${sd.center} ima ${hN}′ ⊥ ${sd.center}′${sd.apex}′ i ${hN}″ ∥ x. Jedna stranica osnove je horizontalna, pa je paralelna sa ${hN}.${aNote}`);
+    // 2) prava veličina osnove (obaranje oko h)
+    this.step('Osnova u pravoj veličini (obaranje oko h)', 'Osnova⁰');
+    const S1 = this.p1(S), h2 = U2(this.p1(hd));
+    let u2 = [-h2[1], h2[0]];
+    if (D2(u2, this.p1(ud)) < 0) u2 = M2(u2, -1);
+    const P0 = {};
+    base.forEach(nm => { const d = sub(verts[nm], S); P0[nm] = A2(S1, A2(M2(h2, dot(d, hd)), M2(u2, dot(d, ud)))); });
+    this.el({ k: 'Poly', pts: base.map(nm => P0[nm]), cls: 'tri0' });
+    base.forEach(nm => { this.el({ k: 'P', p: P0[nm], lab: nm + '^0', cls: 'pt3' }); this.seg(P0[nm], this.p1(verts[nm]), 'con'); });
+    const kindN = n === 3 ? 'jednakostranični trougao' : n === 4 ? 'kvadrat' : `pravilni ${n}-ugao`;
+    this.say(`Ravan osnove se obori oko ${hN} u horizontalan položaj. ${sd.center} je na osi obaranja, pa ostaje na mjestu. Oko ${sd.center}′ se nacrta ${kindN} stranice a = ${fmt(a)} cm (poluprečnik opisane kružnice ${fmt(R)} cm), sa stranicom ${base[0]}^0${base[1]}^0 ∥ ${hN}′, na strani suprotnoj od tjemena ${base[base.length > 2 ? 2 : 1]}^0 („niža stranica”). Vraćanjem iz obaranja tačke idu po normalama na ${hN}′ i daju ${base.map(x => x + '′').join(', ')}; druge projekcije se dobijaju ordinalama na visinama tih tačaka (horizontale kroz njih).`);
+    // 3) projekcije piramide i vidljivost
+    this.step('Projekcije piramide i vidljivost', 'Piramida');
+    base.forEach(nm => this.drawPoint(verts[nm], nm, 'res'));
+    const faces = [base.slice().reverse()].concat(base.map((nm, i) => [nm, base[(i + 1) % base.length], sd.apex]));
+    const ph = this.polyhedron(verts, faces);
+    this.say(`Bočne ivice spajaju tjemena osnove sa vrhom ${sd.apex}. ` + this.hiddenEdgesText(ph));
+    base.forEach(nm => this.res1(`Tjeme ${nm}`, `${nm}${fP(verts[nm])}`));
+    this.res1('Osnova', `${kindN}, a = ${fmt(a)} cm, h = ${fmt(H)} cm`);
+    this.solidDone = true;
+  },
+
+  /* kocka iz ivice XX1 i uslova za susjedno tjeme */
+  opCube(sd) {
+    const P0 = this.pts[sd.e0] && this.pts[sd.e0].P, P1 = this.pts[sd.e1] && this.pts[sd.e1].P;
+    if (!P0 || !P1) { this.note('Za kocku nije zadata ivica.'); return; }
+    const e = sub(P1, P0), s = len(e), eh = unit(e);
+    const B = sd.base, iB = B.indexOf(sd.e0);
+    const cond = sd.cond;
+    let e1 = cross(eh, Math.abs(eh.x) < 0.9 ? EX : EY); e1 = unit(e1);
+    const e2 = cross(eh, e1);
+    const cands = [];
+    const nb = [B[(iB + 3) % 4], B[(iB + 1) % 4]];
+    const tryW = w => [1, -1].forEach(sg => {
+      const v = mul(cross(eh, w), sg);
+      const iA = B.indexOf(cond ? cond.v : nb[0]);
+      const rel = (iA - iB + 4) % 4;
+      if (rel !== 1 && rel !== 3) return;
+      const W = rel === 3 ? w : v, Vv = rel === 3 ? v : w;
+      const vt = {};
+      vt[B[iB]] = P0; vt[B[(iB + 3) % 4]] = add(P0, W); vt[B[(iB + 1) % 4]] = add(P0, Vv); vt[B[(iB + 2) % 4]] = add(P0, add(W, Vv));
+      B.forEach(nm => { vt[nm + '1'] = add(vt[nm], e); });
+      const minc = Math.min(...Object.values(vt).map(P => Math.min(P.x, P.y, P.z)));
+      cands.push({ vt, minc });
+    });
+    let how = '';
+    if (cond) {
+      const c = cond.c, rq = -P0[c] / s, Rr = Math.hypot(e1[c], e2[c]);
+      if (Rr < 1e-9 || Math.abs(rq / Rr) > 1 + 1e-9) { this.note(`Tjeme ${cond.v} ne može ležati u ${cond.w}: ivica je predaleko od te ravni.`); return; }
+      const dl = Math.atan2(e2[c], e1[c]), ac = Math.acos(Math.max(-1, Math.min(1, rq / Rr)));
+      [dl + ac, dl - ac].forEach(ph => tryW(add(mul(e1, s * Math.cos(ph)), mul(e2, s * Math.sin(ph)))));
+      how = `Tjeme ${cond.v} je susjedno tjemenu ${sd.e0}, pa je ${cond.v}${sd.e0} ⊥ ${sd.e0}${sd.e1} i |${cond.v}${sd.e0}| = ${fmt(s)} cm: ${cond.v} je na kružnici oko ${sd.e0} u ravni okomitoj na ${sd.e0}${sd.e1}. Uslov da ${cond.v} leži u ${cond.w} (${c} = 0) daje dvije tačke te kružnice.`;
+    } else { tryW(mul(e1, s)); how = `Tjeme susjedno ${sd.e0} izabrano je proizvoljno na kružnici oko ${sd.e0} u ravni okomitoj na ${sd.e0}${sd.e1}.`; }
+    if (!cands.length) { this.note('Kocka se ne može postaviti iz zadatih uslova.'); return; }
+    const ok = cands.filter(c => c.minc >= -1e-6);
+    const pick = (ok.length ? ok : cands).sort((a, b) => b.minc - a.minc)[0];
+    const vt = pick.vt;
+    this.step(`Ivica ${sd.e0}${sd.e1} i tjeme ${cond ? cond.v : ''}`, 'Tjeme ' + (cond ? cond.v : ''));
+    this.say(`|${sd.e0}${sd.e1}| = ${fmt(s)} cm je dužina ivice kocke. ${how} ${ok.length ? `Od ${cands.length} mogućih položaja kocke u I oktantu ${ok.length === 1 ? 'leži samo jedan' : 'leži ' + ok.length + '; uzet je onaj koji je najdalje od ravni projekcija'}.` : 'Nijedan položaj ne leži cijeli u I oktantu; uzet je najbliži.'}`);
+    if (cond) this.drawPoint(vt[cond.v], cond.v, 'res');
+    this.step('Ostala tjemena', 'Tjemena');
+    const all = Object.keys(vt);
+    all.forEach(nm => { if (nm !== sd.e0 && nm !== sd.e1 && (!cond || nm !== cond.v)) this.drawPoint(vt[nm], nm, 'pt2', { ord: false }); });
+    this.say(`Treće tjeme osnove je okomito i na ${sd.e0}${sd.e1} i na prvu ivicu osnove, iste dužine ${fmt(s)} cm. Ivice ${B.map(n => n + n + '1').join(', ')} su paralelne i jednake, pa se gornja tjemena dobijaju nanošenjem vektora ${sd.e0}${sd.e1} (u projekcijama: paralelne i jednake duži ${sd.e0}′${sd.e1}′, odnosno ${sd.e0}″${sd.e1}″).`);
+    this.step('Projekcije kocke i vidljivost', 'Vidljivost');
+    const T = B.map(n => n + '1');
+    const faces = [B.slice(), T.slice()].concat(B.map((n, i) => [n, B[(i + 1) % 4], T[(i + 1) % 4], T[i]]));
+    const ph = this.polyhedron(vt, faces);
+    this.say(this.hiddenEdgesText(ph));
+    all.filter(n => n !== sd.e0 && n !== sd.e1).forEach(nm => this.res1(`Tjeme ${nm}`, `${nm}${fP(vt[nm])}`));
+    this.res1('Ivica kocke', `a = ${fmt(s)} cm`);
+    this.solidDone = true;
+  },
+
+  /* kružni konus (osnova u H) i njegov presjek ravni */
+  opCone(sd) {
+    const C = this.pts[sd.center] && this.pts[sd.center].P, Vx = this.pts[sd.apex] && this.pts[sd.apex].P, r = sd.r;
+    if (!C || !Vx || !r) { this.note('Za konus nisu zadati centar osnove, poluprečnik i vrh.'); return; }
+    const u1 = EX, u2 = EY, NS = 360;
+    const Bt = th => add(C, add(mul(u1, r * Math.cos(th)), mul(u2, r * Math.sin(th))));
+    const Tt = th => add(mul(u1, -r * Math.sin(th)), mul(u2, r * Math.cos(th)));
+    const nl = th => { let n0 = cross(sub(Vx, Bt(th)), Tt(th)); if (dot(n0, sub(Bt(th), C)) < 0) n0 = mul(n0, -1); return n0; };
+    const vertical = Math.abs(Vx.x - C.x) < 1e-9 && Math.abs(Vx.y - C.y) < 1e-9;
+    const pl = this.givenPlanes().find(p => p.n) || null;
+    // 1) konus
+    this.step('Konus', 'Konus');
+    const cone = { C, Vx, r, Bt, nl, pl: null, keep: 0 };
+    this.coneObj = cone;
+    const coneFull = this.el({ k: 'G3', gen: view => this.coneGen(cone, view, 'body') });
+    const hh = Vx.z - C.z;
+    this.say(`Osnova je kružnica u H sa centrom ${sd.center}${fP(C)} i r = ${fmt(r)} cm: u prvoj projekciji je kružnica, u drugoj duž na osi x dužine ${fmt(2 * r)} cm. Vrh ${sd.apex}${fP(Vx)}${vertical ? ' je iznad centra, pa je konus uspravan (obrtni)' : ' nije iznad centra, pa je konus kos'}. Konturne izvodnice u drugoj projekciji su izvodnice čija tangentna ravan prolazi pravcem pogleda; ${vertical ? 'kod uspravnog konusa to su krajnja lijeva i desna izvodnica, a u prvoj projekciji kontura je kružnica osnove' : 'u prvoj projekciji to su tangente iz ' + sd.apex + '′ na kružnicu osnove'}.`);
+    this.res1('Konus', `${vertical ? 'uspravan' : 'kos'}, r = ${fmt(r)} cm, visina ${fmt(hh)} cm`);
+    if (!pl) return;
+    // 2) presjek
+    const N = pl.name;
+    const cutPt = th => { const B0 = Bt(th), dn = dot(pl.n, sub(Vx, B0)); if (Math.abs(dn) < 1e-12) return null; const t = (pl.d - dot(pl.n, B0)) / dn; return t >= -1e-9 && t <= 1 + 1e-9 ? { P: add(B0, mul(sub(Vx, B0), t)), t, th } : null; };
+    let sc = 0, minRel = Infinity, prevS = null;
+    for (let i = 0; i < NS; i++) {
+      const th = 2 * Math.PI * i / NS, w = dot(pl.n, sub(Vx, Bt(th))), rel = Math.abs(w) / (len(pl.n) * len(sub(Vx, Bt(th))));
+      minRel = Math.min(minRel, rel);
+      const sg = Math.sign(w);
+      if (prevS !== null && sg !== prevS && sg !== 0) sc++;
+      if (sg !== 0) prevS = sg;
+    }
+    const kind = minRel < 2e-3 && sc <= 2 && (sc === 0 || minRel < 2e-3) ? (sc >= 2 && minRel > 1e-5 ? 'hiperbola' : 'parabola') : sc >= 2 ? 'hiperbola' : 'elipsa';
+    cone.pl = pl;
+    if (this.T.coneCut) {
+      const far = V(-this.sx * 1000 * (this.T.coneCut === 'lijevo' ? 1 : -1), C.y, C.z);
+      cone.keep = Math.sign(dot(pl.n, far) - pl.d) || 1;
+    }
+    const pts = [];
+    for (let i = 0; i <= 720; i++) { const q = cutPt(2 * Math.PI * i / 720); if (q) pts.push(q); }
+    if (!pts.length) { this.step('Presjek', 'Presjek'); this.say(`Ravan ${N} ne siječe konus.`); this.res1('Presjek', 'nema'); return; }
+    this.step(`Tačke presječne krive`, 'Tačke krive');
+    const sample = [];
+    const nk = 8;
+    for (let k = 0; k < nk; k++) { const q = pts[Math.round(k * (pts.length - 1) / (nk - 1))]; if (!sample.some(s => len(sub(s.P, q.P)) < 0.3)) sample.push(q); }
+    sample.forEach((q, i) => {
+      const g = lineThrough(`g${i + 1}`, Vx, Bt(q.th), 'aux'); g.rel = [0, 1];
+      this.lineEl(g, 1, 'aux', null, { vis: 'all' }); this.lineEl(g, 2, 'aux', null, { vis: 'all' });
+      this.drawPoint(q.P, String(i + 1), 'pt2', { ord: true });
+    });
+    const parProf = Math.abs(pl.n.y) < 1e-9 && Math.abs(pl.n.z) < 1e-9;
+    this.say(`Tačke presječne krive su prodori izvodnica kroz ravan ${N}. Za izvodnicu ${sd.apex}B kroz tačku B kružnice osnove postavi se pomoćna ravan kroz izvodnicu (${parProf ? `ovdje nije ni potrebna: ${N} je paralelna sa P, pa se tačke čitaju direktno na x = ${fmt(pl.ints ? pl.ints[0] : pl.d / pl.n.x)}` : `npr. prvoprojicirajuća, kojoj je trag izvodnica u prvoj projekciji`}); njen presjek sa ${N} siječe izvodnicu u tački krive. Na crtežu je ${sample.length} tačaka (1 do ${sample.length}); kriva se crta kroz njih.`);
+    this.step(`Presječna kriva (${kind})`, 'Kriva');
+    const secEl = this.el({ k: 'G3', gen: view => this.coneSection(cone, view, cutPt) });
+    this.secEl = secEl; this.cutPtFn = cutPt;
+    this.say(`Presjek je ${kind}: ravan ${N} je ${kind === 'elipsa' ? 'strmija od nijedne izvodnice, pa siječe sve izvodnice' : kind === 'parabola' ? 'paralelna sa jednom izvodnicom konusa' : 'paralelna sa dvije izvodnice konusa'}.${this.coneParabNote || ''} Vidljiv je dio krive na vidljivoj strani omotača.`);
+    this.res1(`Presjek konusa i ravni ${N}`, kind);
+    const top = pts.reduce((a, b) => b.P.z > a.P.z ? b : a);
+    this.res1('Najviša tačka krive', `${fP(top.P)}`);
+    // 3) konturne tačke
+    if (this.T.kontur || true) {
+      this.step('Konturne tačke', 'Konturne tačke');
+      const lines = [];
+      const Kof = v => { const K = []; for (let i = 1; i < pts.length; i++) { const a = dot(nl(pts[i - 1].th), v), b = dot(nl(pts[i].th), v); if (a * b < 0 && Math.abs(pts[i].th - pts[i - 1].th) < 0.1) K.push(pts[i].P); } return K; };
+      [1, 2].forEach(m => Kof(this.viewVec(m)).forEach((P, i) => lines.push(`${m === 1 ? 'u prvoj' : 'u drugoj'} K${i + 1}${fP(P)}`)));
+      this.el({ k: 'G3', gen: view => ({ lines: [], pts: Kof(view).map((P, i) => ({ P, lab: 'K' + (i + 1), cls: 'res' })) }) });
+      this.say(`Konturne tačke su tačke krive na konturnim izvodnicama: u njima kriva dodiruje konturu konusa i mijenja vidljivost. ${lines.length ? 'Označene su sa K u svakoj projekciji posebno, jer konturne izvodnice zavise od pravca pogleda.' : 'Ovdje kriva ne siječe nijednu konturnu izvodnicu, pa nema promjene vidljivosti.'}`);
+      if (lines.length) this.res1('Konturne tačke', lines.join('; '));
+    }
+    // 4) tangente
+    if (this.T.tangente) {
+      this.step('Tangente u tačkama krive', 'Tangente');
+      const pick = [0.25, 0.5, 0.75].map(f => Math.round(f * (pts.length - 1))).filter(i => i > 0 && i < pts.length - 1);
+      pick.forEach((i, k) => {
+        const d = unit(sub(pts[Math.min(pts.length - 1, i + 3)].P, pts[Math.max(0, i - 3)].P));
+        const tl = mkLine(`t${k + 1}`, pts[i].P, d, 'nag'); tl.rel = [-2.2, 2.2];
+        this.lineEl(tl, 1, 'nag', null, { vis: 'all' }); this.lineEl(tl, 2, 'nag', null, { vis: 'all' });
+        this.ptEl(pts[i].P, 1, `T${k + 1}′`, 'pt3'); this.ptEl(pts[i].P, 2, `T${k + 1}″`, 'pt3');
+      });
+      this.say(`Tangenta krive u tački T je presjek ravni ${N} i tangentne ravni konusa duž izvodnice kroz T. Tangentna ravan siječe ravan osnove po tangenti kružnice u podnožju izvodnice; ta tangenta siječe prvi trag ${N}_1 u tački kroz koju prolazi tražena tangenta krive (druga tačka je T). Nacrtane su tangente u ${pick.length} tačke (T1 do T${pick.length}).`);
+    }
+    if (cone.keep) {
+      this.step(`Dio ${this.T.coneCut} od ravni ${N}`, `Dio ${this.T.coneCut}`);
+      coneFull.until = this.steps.length - 1;
+      this.secEl.until = this.steps.length - 1;
+      const cone2 = Object.assign({}, cone, { cutOn: true });
+      this.el({ k: 'G3', gen: view => this.coneSection(cone2, view, this.cutPtFn) });
+      this.el({ k: 'G3', gen: view => this.coneGen(cone, view, 'body', true) });
+      this.say(`Poslije presjeka je prikazan samo dio konusa ${this.T.coneCut} od ravni ${N}. Presjek je sada strana tijela: vidljiv je kad je ta strana okrenuta posmatraču.`);
+    }
+    this.solidDone = true;
+  },
+  coneGen(cone, view, cls, cutOnly) {
+    const { C, Vx, r, Bt, nl, pl, keep } = cone, NS = 360, lines = [];
+    const kept = P => !cutOnly || !keep || (dot(pl.n, P) - pl.d) * keep >= -1e-9;
+    const baseFront = dot(V(0, 0, -1), view) > 1e-9;
+    let cur = null;
+    for (let i = 0; i <= NS; i++) {
+      const th = 2 * Math.PI * i / NS, B0 = Bt(th);
+      if (!kept(B0)) { cur = null; continue; }
+      const sol = dot(nl(th), view) > 0 || baseFront;
+      if (!cur || cur.solid !== sol) { const prev = cur && cur.pts[cur.pts.length - 1]; cur = { pts: prev ? [prev] : [], solid: sol, cls }; lines.push(cur); }
+      cur.pts.push(B0);
+    }
+    for (let i = 0; i < NS; i++) {
+      const t0 = 2 * Math.PI * (i + 0.37) / NS, t1 = 2 * Math.PI * (i + 1.37) / NS;
+      const a = dot(nl(t0), view), b = dot(nl(t1), view);
+      if (a * b < 0) {
+        let lo = t0, hi = t1;
+        for (let j = 0; j < 40; j++) { const mid = (lo + hi) / 2; if (dot(nl(mid), view) * a > 0) lo = mid; else hi = mid; }
+        const B0 = Bt(lo);
+        let E = Vx;
+        if (keep && cutOnly) {
+          const dn = dot(pl.n, sub(Vx, B0));
+          if (!kept(B0) && !kept(Vx)) continue;
+          if (Math.abs(dn) > 1e-12) { const t = (pl.d - dot(pl.n, B0)) / dn; if (t > 0 && t < 1) { const X = add(B0, mul(sub(Vx, B0), t)); if (kept(B0)) E = X; else { lines.push({ pts: [X, Vx], solid: true, cls }); continue; } } }
+          if (!kept(B0)) continue;
+        }
+        lines.push({ pts: [B0, E], solid: true, cls });
+      }
+    }
+    if (keep && cutOnly) { // tetiva presjeka u ravni osnove
+      const ch = [];
+      for (let i = 0; i < NS; i++) { const B0 = Bt(2 * Math.PI * i / NS), B1 = Bt(2 * Math.PI * (i + 1) / NS); const a = dot(pl.n, B0) - pl.d, b = dot(pl.n, B1) - pl.d; if (a * b <= 0 && a !== b) ch.push(add(B0, mul(sub(B1, B0), a / (a - b)))); }
+      if (ch.length >= 2) lines.push({ pts: [ch[0], ch[1]], solid: dot(mul(pl.n, -keep), view) > 1e-9 || baseFront, cls });
+    }
+    return { lines, pts: [] };
+  },
+  coneSection(cone, view, cutPt) {
+    const { nl, pl, keep } = cone, lines = [];
+    const cutFront = keep && cone.cutOn && dot(mul(pl.n, -keep), view) > 1e-9;
+    let cur = null;
+    for (let i = 0; i <= 720; i++) {
+      const th = 2 * Math.PI * i / 720, q = cutPt(th);
+      if (!q) { cur = null; continue; }
+      const sol = cutFront || dot(nl(th), view) > 0;
+      if (!cur || cur.solid !== sol) { const prev = cur && cur.pts[cur.pts.length - 1]; cur = { pts: prev ? [prev] : [], solid: sol, cls: 'resS' }; lines.push(cur); }
+      cur.pts.push(q.P);
+    }
+    return { lines, pts: [] };
+  },
+
+  /* simetrična duž u odnosu na ravan lika */
+  opRefl(rf) {
+    const poly = this.tris.find(t => t.name === rf.poly) || this.tris[0];
+    if (!poly || !poly.P) { this.note('Za simetriju nije zadat lik.'); return; }
+    const pl = polyPlane(poly), out = [];
+    rf.src.forEach((nm, k) => {
+      const P = this.pts[nm] && this.pts[nm].P; if (!P) return;
+      const nN = this.freeL('n');
+      const L = mkLine(nN, P, pl.n, 'nor'); L.rel.push(0);
+      const fN = this.pickName(['N', 'M', 'Q', 'U']);
+      this.step(`Normala iz ${nm} na ravan ${poly.name}`, `Normala iz ${nm}`);
+      this.lineEl(L, 1, 'nor', null, { vis: 'all' }); this.lineEl(L, 2, 'nor', null, { vis: 'all' });
+      this.say(`Simetrična tačka ${rf.dst[k]} leži na normali iz ${nm} na ravan ${poly.name}. Normala je okomita na horizontale i frontale ravni: ${nN}′ ⊥ h′ i ${nN}″ ⊥ f″ (h i f ravni ${poly.name} dobijaju se kroz njena tjemena).`);
+      const r = this.prodorTrougao(L, poly, fN, { noVis: true, noRes: true, oneStep: true, title: `Prodor normale ${nN} kroz ravan ${poly.name}`, short: `Prodor ${fN}` });
+      if (!r) return;
+      const N0 = r.P, Q = sub(mul(N0, 2), P);
+      addRel(L, Q);
+      this.step(`Tačka ${rf.dst[k]}`, rf.dst[k]);
+      this.drawPoint(Q, rf.dst[k], 'res');
+      this.say(`${fN} je podnožje normale i sredina duži ${nm}${rf.dst[k]}. Projekcija čuva sredinu duži, pa se ${rf.dst[k]}′ dobija nanošenjem |${nm}′${fN}′| od ${fN}′ dalje po ${nN}′, a ${rf.dst[k]}″ isto po ${nN}″: ${rf.dst[k]}${fP(Q)}.`);
+      this.pts[rf.dst[k]] = { name: rf.dst[k], P: Q, c: [Q.x, Q.y, Q.z], unknown: [] };
+      this.used.add(rf.dst[k]);
+      out.push(Q);
+      this.res1(`Tačka ${rf.dst[k]}`, `${rf.dst[k]}${fP(Q)} (podnožje ${fN}${fP(N0)})`);
+    });
+    if (out.length === 2) {
+      const L = lineThrough(rf.dst.join(''), out[0], out[1], 'res'); L.rel = [0, 1];
+      this.step(`Duž ${rf.dst.join('')}`, rf.dst.join(''));
+      this.lineEl(L, 1, 'res', `${rf.dst[0]}′${rf.dst[1]}′`, { vis: 'oct' }); this.lineEl(L, 2, 'res', `${rf.dst[0]}″${rf.dst[1]}″`, { vis: 'oct' });
+      this.say(`${rf.dst[0]}${rf.dst[1]} je simetrična duž. Simetrija čuva dužinu, pa je |${rf.dst[0]}${rf.dst[1]}| = |${rf.src.join('')}|.`);
+      this.reflSeg = rf.dst;
+    }
+  },
+
+  /* nagibni triedar ravni u tački */
+  opTriedar(td) {
+    const pl = this.planes.find(p => p.name === td.plane && p.n) || this.planes.filter(p => p.n).slice(-1)[0];
+    const A = this.pts[td.point] && this.pts[td.point].P;
+    if (!pl || !A) { this.note('Za nagibni triedar nisu poznati ravan i tačka.'); return; }
+    if (!onPlane(pl, A)) this.note(`Tačka ${td.point} ne leži u ravni ${pl.name}; triedar je nacrtan kroz njenu projekciju na ravan.`);
+    this.ensureTraces(pl);
+    const k = td.k, e = k === 1 ? EZ : EY, nn = unit(pl.n);
+    const dir = sub(e, mul(nn, dot(e, nn)));
+    if (len(dir) < 1e-9) { this.note(`Ravan ${pl.name} je paralelna sa ${k === 1 ? 'H' : 'F'}; nagibnica ne postoji.`); return; }
+    const L = mkLine(`n_${k}`, A, dir, 'nag'); L.rel.push(0);
+    const Q = prodorK(L, k);
+    if (!Q) return;
+    addRel(L, Q); if (pl.tr[k]) addRel(pl.tr[k], Q);
+    const qN = this.pickName(['N', 'Q', 'K']);
+    const A0 = k === 1 ? V(A.x, A.y, 0) : V(A.x, 0, A.z);
+    const pA = k === 1 ? '′' : '″', o = 3 - k, pB = k === 1 ? '″' : '′';
+    this.step(`${k === 1 ? 'Prva' : 'Druga'} nagibnica ravni ${pl.name} kroz ${td.point}`, `n_${k}`);
+    this.lineEl(L, 1, 'nag', `n_${k}′`, { vis: 'all' }); this.lineEl(L, 2, 'nag', `n_${k}″`, { vis: 'all' });
+    this.ptEl(Q, k, qN + pA, 'pt2'); this.seg(this.pr(Q, k), this.pr(Q, o), 'ord'); this.ptEl(Q, o, qN + pB, 'axpt');
+    this.say(`${k === 1 ? 'Prva' : 'Druga'} nagibnica ${L.name} ravni ${pl.name} kroz ${td.point} okomita je na ${pl.name}_${k}: ${L.name}${pA} ⊥ ${pl.name}_${k} kroz ${td.point}${pA} siječe trag u ${qN}${pA}, a ${qN}${pB} je na osi x.`);
+    this.step(`Nagibni triedar u tački ${td.point}`, 'Triedar');
+    this.el({ k: 'S3', A, B: A0, cls: 'con' }); this.el({ k: 'S3', A: A0, B: Q, cls: 'nag' });
+    const r = this.pvConstruct(A, Q, td.point, qN, k, 'φ');
+    const ang = Math.acos(Math.min(1, Math.abs(dot(nn, e))));
+    this.say(`${k === 1 ? 'Prvi' : 'Drugi'} nagibni triedar u tački ${td.point} čine nagibnica ${td.point}${qN}, njena ${k === 1 ? 'prva' : 'druga'} projekcija (u ${k === 1 ? 'H' : 'F'}) i ${k === 1 ? 'vertikala' : 'normala na F'} kroz ${td.point}. Trougao je pravougli; u pravoj veličini (obaranjem oko ${td.point}${pA}${qN}${pA}) ugao kod ${qN} je ugao ravni ${pl.name} sa ${k === 1 ? 'H' : 'F'}: φ = ${fAng(ang)}.`);
+    this.res1(`Triedar u ${td.point}`, `nagibnica ${td.point}${qN}, ${qN}${fP(Q)}, |${td.point}${qN}| = ${fmt(r.trueLen)} cm`);
+    this.res1(`Ugao ravni ${pl.name} sa ${k === 1 ? 'H' : 'F'}`, `φ = ${fAng(ang)}`);
+  },
+
+  /* tačke ravni na zadatoj udaljenosti od F (frontala) ili od H (horizontala) */
+  opPlaneLevel(pd) {
+    const pl = this.planes.find(p => p.name === pd.plane && p.n) || this.planes.filter(p => p.n).slice(-1)[0];
+    if (!pl) return;
+    this.ensureTraces(pl);
+    const c = pd.c, val = pd.v, isF = c === 'y';
+    const e = isF ? EY : EZ, dir = cross(pl.n, e);
+    if (len(dir) < 1e-9) { this.note(`Ravan ${pl.name} je paralelna sa ${isF ? 'F' : 'H'}.`); return; }
+    const n = pl.n;
+    let P0;
+    if (isF) P0 = Math.abs(n.x) >= Math.abs(n.z) ? V((pl.d - n.y * val) / n.x, val, 0) : V(0, val, (pl.d - n.y * val) / n.z);
+    else P0 = Math.abs(n.x) >= Math.abs(n.y) ? V((pl.d - n.z * val) / n.x, 0, val) : V(0, (pl.d - n.z * val) / n.y, val);
+    const nm = this.freeL(isF ? 'f' : 'h');
+    const L = mkLine(nm, P0, dir, 'res'); L.rel.push(0);
+    const k = isF ? 1 : 2, Q = prodorK(L, k);
+    if (Q) { addRel(L, Q); addRel(pl.tr[k], Q); }
+    this.step(`Tačke ravni ${pl.name} ${fmt(Math.abs(val))} cm ${pd.word}`, isF ? `Frontala ${nm}` : `Horizontala ${nm}`);
+    this.lineEl(L, 1, 'res', null, { vis: 'all' }); this.lineEl(L, 2, 'res', null, { vis: 'all' });
+    if (Q) { const pA = k === 1 ? '′' : '″', pB = k === 1 ? '″' : '′'; this.ptEl(Q, k, `${k}_${nm}${pA}`, 'pt2'); this.seg(this.pr(Q, k), this.pr(Q, 3 - k), 'ord'); this.ptEl(Q, 3 - k, `${k}_${nm}${pB}`, 'axpt'); }
+    this.say(isF
+      ? `Sve tačke ravni ${pl.name} koje su ${fmt(val)} cm ispred F leže na frontali ${nm} te ravni (y = ${fmt(val)}). ${nm}′ ∥ x, ${fmt(val)} cm ispod ose x; ona siječe ${pl.name}_1 u 1_${nm}′, ordinala daje 1_${nm}″ na osi x, a kroz nju ide ${nm}″ ∥ ${pl.name}_2.`
+      : `Sve tačke ravni ${pl.name} koje su ${fmt(val)} cm iznad H leže na horizontali ${nm} te ravni (z = ${fmt(val)}). ${nm}″ ∥ x, ${fmt(val)} cm iznad ose x; ona siječe ${pl.name}_2 u 2_${nm}″, ordinala daje 2_${nm}′ na osi x, a kroz nju ide ${nm}′ ∥ ${pl.name}_1.`);
+    this.res1(`Tačke ravni ${pl.name} ${fmt(Math.abs(val))} cm ${pd.word}`, `${isF ? 'frontala' : 'horizontala'} ${nm}${Q ? `, kroz ${k}_${nm}${fP(Q)}` : ''}`);
+  },
+
+  /* prodori presječne prave dva lika */
+  opProdoriS() {
+    const t = this.tris.filter(x => x.P);
+    if (t.length < 2) return;
+    const s = planePlane(polyPlane(t[0]), polyPlane(t[1]), this.freeL('s'));
+    if (!s) return;
+    s.kind = 'res';
+    [1, 2, 3].forEach(k => { const Q = prodorK(s, k); if (Q && len(Q) < 30) addRel(s, Q); });
+    this.step(`Presječna prava ${s.name}`, `Prava ${s.name}`);
+    this.drawLine(s, 'res');
+    this.say(`Presječna prava ${s.name} ravni likova ${t[0].name} i ${t[1].name} prolazi kroz krajeve presječne duži; produži se do ravni projekcija.`);
+    this.opProdori(s);
+  }
+});
+
 function polyPlane(t) {
   const V3 = t.P;
   let n = V(0, 0, 0);
@@ -2729,7 +3208,7 @@ function hiddenBy(P, T, m, S) {
   const Q = add(add(mul(T[0], w0), mul(T[1], w1)), mul(T[2], w2));
   if (m === 1) return P.z < Q.z - 1e-7;
   if (m === 2) return P.y < Q.y - 1e-7;
-  return P.x < Q.x - 1e-7;
+  return -S.sx * P.x < -S.sx * Q.x - 1e-7;
 }
 
 /* ---------------- oznake (bez preklapanja) ---------------- */
@@ -2753,6 +3232,7 @@ function placeLabels(sol) {
     if (e.k === 'L' && e.pieces) e.pieces.forEach(p => segs.push([p.a, p.b]));
     if (e.k === 'X' && e.a2) segs.push([e.a2, e.b2]);
     if (e.k === 'Poly') e.pts.forEach((p, i) => segs.push([p, e.pts[(i + 1) % e.pts.length]]));
+    if (e.k === 'PL') { const st = Math.max(1, Math.floor(e.pts.length / 24)); for (let i = st; i < e.pts.length; i += st) segs.push([e.pts[i - st], e.pts[i]]); if (e.pts.length > 1) segs.push([e.pts[Math.max(0, e.pts.length - 1 - st)], e.pts[e.pts.length - 1]]); }
   });
   segs.push([[b.minx, 0], [b.maxx, 0]]);
   const dots = sol.els.filter(e => e.k === 'P').map(e => e.p);
@@ -2856,14 +3336,15 @@ function renderSVG(sol, stepIdx, opt) {
   s += `<text x="${r(-0.2 * sol.sx)}" y="${r(0.55)}" class="axl" text-anchor="${sol.sx > 0 ? 'end' : 'start'}">O</text>`;
   s += `</g>`;
   }
-  const vis = e => all || e.step <= stepIdx;
+  const vis = e => (all || e.step <= stepIdx) && !(e.until != null && (all || stepIdx >= e.until));
   const cur = e => !all && e.step === stepIdx;
-  const order = { Poly: 0, S: 1, X: 1, A: 1, C: 1, L: 2, G: 3, P: 4, T: 5 };
+  const order = { Poly: 0, S: 1, PL: 1, X: 1, A: 1, C: 1, L: 2, G: 3, P: 4, T: 5 };
   const els = sol.els.filter(vis).slice().sort((a, c) => order[a.k] - order[c.k]);
   let lab = '';
   els.forEach(e => {
     const cl = (e.cls || '') + (cur(e) ? ' cur' : '');
     if (e.k === 'Poly') s += `<polygon points="${e.pts.map(P).join(' ')}" class="${cl}"/>`;
+    else if (e.k === 'PL') s += `<polyline points="${e.pts.map(P).join(' ')}" class="${cl}" fill="none"/>`;
     else if (e.k === 'S') s += `<line x1="${r(e.a[0])}" y1="${r(e.a[1])}" x2="${r(e.b[0])}" y2="${r(e.b[1])}" class="${cl}"/>`;
     else if (e.k === 'X') s += `<line x1="${r(e.a2[0])}" y1="${r(e.a2[1])}" x2="${r(e.b2[0])}" y2="${r(e.b2[1])}" class="${cl}"/>`;
     else if (e.k === 'A') {
@@ -2950,6 +3431,10 @@ function buildKosa(sol, prm) {
       els.push({ k: 'Poly', pts: e.poly.P.map(K), cls: 'tri fillonly', poly: e.poly, step: e.step });
     } else if (e.k === 'S3') {
       els.push({ k: 'S', a: K(e.A), b: K(e.B), cls: e.cls, step: e.step });
+    } else if (e.k === 'G3') {
+      const g = e.gen(dView);
+      g.lines.forEach(ln => { if (ln.pts.length >= 2) els.push({ k: 'PL', pts: ln.pts.map(K), cls: ln.cls + (ln.solid ? '' : ' dash'), step: e.step, until: e.until }); });
+      (g.pts || []).forEach(q => els.push({ k: 'P', p: K(q.P), lab: q.lab, cls: q.cls || 'pt', step: e.step, until: e.until }));
     }
   });
   // dijelovi linija: puno u I oktantu, isprekidano van njega ili iza lika
@@ -2972,7 +3457,7 @@ function buildKosa(sol, prm) {
   });
   // okvir crteža i osni sistem sa zidovima I oktanta
   const pts = [];
-  els.forEach(e => { if (e.k === 'P') pts.push(e.p); if (e.k === 'S') pts.push(e.a, e.b); if (e.k === 'Poly') e.pts.forEach(p => pts.push(p)); if (e.k === 'L') e.pieces.forEach(p => pts.push(p.a, p.b)); });
+  els.forEach(e => { if (e.k === 'P') pts.push(e.p); if (e.k === 'S') pts.push(e.a, e.b); if (e.k === 'Poly' || e.k === 'PL') e.pts.forEach(p => pts.push(p)); if (e.k === 'L') e.pieces.forEach(p => pts.push(p.a, p.b)); });
   const all3 = [];
   sol.els.forEach(e => { if (e.k === 'P' && e.P3) all3.push(e.P3); });
   const mx = (f, d) => Math.max(d, ...all3.map(f).filter(isFinite)) + 1;
@@ -3067,7 +3552,15 @@ const C = [
   { id: 'k21-2', src: 'K1 2021/22 A', text: 'O2 (20; 15) Zadani su trouglovi ABC i DEF: A(-3; 3; 1), B(-8; 7; 6), C(-11; 0; 2.5), D(-3.5; 2; 5), E(-8; 1.5; 7), F(-10; 5.5; 0) a) Naći presjek trougla ABC sa trouglom DEF i odrediti vidljivost u projekcijama. b) Odrediti tragove ravni trougla ABC. c) Na posebnom crtežu odrediti pravu veličinu trougla ABC i centar upisane kružnice u trouglu. Upisati i kružnicu.' },
   // K1 2022/23 (prepisano sa fotografije)
   { id: 'k22-1', src: 'K1 2022/23', text: 'O1 (19;14) Date su tačke A(-6, 3, 5) i B(?, ?, -4), tačka B je desno od profilnice 8 cm, a 2 cm iza fronatalnice. (-xy)=300 (1 : 1). a) Prikazati pravu određenu tačkama A i B u kosoj projekciji. b) U ortogonalnim projekcijama odrediti sve tri projekcije prave a=AB, njene prodore kroz projekcijske ravni , vidljivost prave u projekcijama i oktante kroz koje prava prolazi. c) Kroz tačku A postaviti pravu b paralelnu sa frontalnicom, a sa horizontalnicom gradi ugao od 30°. d) Odrediti tragove ravni T ako je prava a druga nagibnica te ravni.' },
-  { id: 'k22-2', src: 'K1 2022/23', text: 'O2 (22;16) Zadani su trouglovi ABC i DEF : A(3; 3; 1), B(8; 7; 6), C(11; 0; 2.5), D(3.5; 2; 5), E(8; 1.5; 7), F(10; 5.5; 0) a) Naći presjek trougla ABC sa trouglom DEF i odrediti vidljivost u projekcijama; b) Odrediti tragove ravni trougla ABC. c) Odrediti pravu veličinu trougla ABC i centar opisane kružnice tog trougla. Opisati kružnicu.' }
+  { id: 'k22-2', src: 'K1 2022/23', text: 'O2 (22;16) Zadani su trouglovi ABC i DEF : A(3; 3; 1), B(8; 7; 6), C(11; 0; 2.5), D(3.5; 2; 5), E(8; 1.5; 7), F(10; 5.5; 0) a) Naći presjek trougla ABC sa trouglom DEF i odrediti vidljivost u projekcijama; b) Odrediti tragove ravni trougla ABC. c) Odrediti pravu veličinu trougla ABC i centar opisane kružnice tog trougla. Opisati kružnicu.' },
+  // E4 / E5 (geodezija) — samo zadaci kojih nije bilo
+  { id: 'e5-1', src: 'E5', text: 'Data je duž EF i paralelogram ABCD. E(2;5;5) F(7;5;5) A(0;8;2) B(7;1;2) C(0;1;9) D(?;?;?) a) Naći koordinate tačke D; b) Duži EF odrediti simetričnu duž E1F1 u odnosu na ravan paralelograma ABCD; c) Odrediti pravu veličinu duži E1F1 i paralelograma ABCD.' },
+  { id: 'e5-3', src: 'E5', text: 'Date su tačke S (3;3;3) i V (6;7;7). Nacrtati projekcije pravilne trostrane piramide ABCV kojoj je tačka S središte bazisa trougla. Jedna stranica trougla je horizontalna i niža od suprotnog tjemena baze. Prikazati vidljivost piramide u obe projekcije.' },
+  { id: 'e5-4', src: 'E5', text: 'Odrediti presjek rotacionog konusa sa ravni α. (kosa projekcija –xy =30°, skraćenje yk=1:1). Konus: centar kružnice C (4; 4; 0) r =4cm, vrh V (8; 4; 10). Baza konusa leži u horizontalnici. Ravan α (4; ∞, ∞). Poslije presjeka prikazati dio lijevo od presječne ravni α. U minimum 3 tačke presječne krive odrediti tangente. Odrediti konturne tačke.' },
+  { id: 'e4-1', src: 'E4', text: 'Date su ravan t (-2;2;3) i prava a određena tačkama A (-8;0;8) i B (-3;0;3). a) Kroz pravu a postaviti ravan β koja je upravna na ravan T; b) Ucrtati prvi nagibni triedar ravni β u tački A; c) Odrediti pravu veličinu rastojanja između tačaka A i B; d) Naći sve tačke u ravni β koje su 4 cm ispred frontalnice.' },
+  { id: 'e4-2', src: 'E4', text: 'Dati su trouglovi ABC i KLM. A (-2,5;2;1), B (-8;6;4.5), C (-2,5;6,5;6,5) K (-7;1,5;5,5), L (-5;7;1), M (-1;3;2,5) a) Metodom transformacije naći presjek trougla ABC i trougla KLM; b) Poslije presjeka prikazati vidljivost oba trougla; c) Naći pravu veličinu trougla KLM. d) Naći prodore presječne prave kroz H, F i P.' },
+  { id: 'e4-3', src: 'E4', text: 'Data je duž BB1 koja je ivica kocke ABCD A1B1C1D1. Nacrtati projekcije te kocke ako tjeme A leži u frontalnici. Odrediti vidljivost kocke u obe projekcije. Kocka leži u prvom oktantu. B (5;2.5;3.5) B1 (3;5.5;5.5)' },
+  { id: 'e4-4', src: 'E4', text: 'U ortogonalnoj projekciji odrediti presjek vertikalnog obrtnog kosog konusa sa ravni α. Drugi trag ravni odrediti iz uslova da ravan siječe konus po paraboli. Odrediti konturnu tačku presječne krive i prikazati vidljivost presjeka u obe projekcije. C (-8; 4; 0), r= 4cm, V (-8; 4; 8), α (-9; 9; ?). Baza konusa leži u horizontalnici.' }
 ];
 if (typeof module !== 'undefined' && module.exports) module.exports = C; else root.NG_CORPUS = C;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -3100,9 +3593,11 @@ const LAB = {
   'v18-10': '10 · presjek transformacijom', 'v18-11': '11 · presjek trouglova, obaranje',
   'k20A-1': '2020/21 A · O1 prava, simetralna ravan', 'k20A-2': '2020/21 A · O2 trouglovi, transformacija', 'k20B-1': '2020/21 B · O1 prava, simetralna ravan', 'k20B-2': '2020/21 B · O2 trouglovi, transformacija',
   'k21-1': '2021/22 · O1 prava, b pod 60°, ravan iz nagibnice', 'k21-2': '2021/22 · O2 trouglovi, upisana kružnica',
-  'k22-1': '2022/23 · O1 prava, b pod 30°, ravan iz nagibnice', 'k22-2': '2022/23 · O2 trouglovi, opisana kružnica'
+  'k22-1': '2022/23 · O1 prava, b pod 30°, ravan iz nagibnice', 'k22-2': '2022/23 · O2 trouglovi, opisana kružnica',
+  'e5-1': 'E5 · O1 simetrična duž, paralelogram', 'e5-3': 'E5 · O3 pravilna trostrana piramida', 'e5-4': 'E5 · O4 presjek kosog konusa (kosa projekcija)',
+  'e4-1': 'E4 · O1 ravan ⊥ T, nagibni triedar, tačke 4 cm ispred F', 'e4-2': 'E4 · O2 transformacija, prodori presječne prave', 'e4-3': 'E4 · O3 kocka iz ivice BB1', 'e4-4': 'E4 · O4 konus, presjek po paraboli'
 };
-K.forEach(c => EX.push({ id: c.id, group: c.src.startsWith('K1 vježba') ? 'K1 – zadaci za vježbu' : 'Kolokvijumi K1', label: LAB[c.id] || c.src, text: c.text }));
+K.forEach(c => EX.push({ id: c.id, group: c.src.startsWith('K1 vježba') ? 'K1 – zadaci za vježbu' : /^E\d/.test(c.src) ? 'Kolokvijumi – geodezija (E4, E5)' : 'Kolokvijumi K1', label: LAB[c.id] || c.src, text: c.text }));
 if (typeof module !== 'undefined' && module.exports) module.exports = EX; else root.NG_EXAMPLES = EX;
 })(typeof window !== 'undefined' ? window : globalThis);
 
@@ -3239,7 +3734,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = EX; else r
     if (!sol.kosa) svg = svg.replace('<g class="axes">', gridSVG(b, sol.fs) + '<g class="axes">');
     if (st.step < last) svg = svg.replace('class="ngsvg"', 'class="ngsvg stepping"');
     // svaki element dobija klasu el radi blijeđenja prethodnih koraka
-    svg = svg.replace(/<(line|path|polygon|circle|text) ([^>]*?)class="([^"]*)"/g, (m, t, a, c) => /gridpt|^ax|axl/.test(c) ? m : `<${t} ${a}class="el ${c}"`);
+    svg = svg.replace(/<(line|path|polygon|polyline|circle|text) ([^>]*?)class="([^"]*)"/g, (m, t, a, c) => /gridpt|^ax|axl/.test(c) ? m : `<${t} ${a}class="el ${c}"`);
     fr.innerHTML = svg;
     const w = b.maxx - b.minx, h = b.maxy - b.miny;
     fr.style.aspectRatio = `${w} / ${h}`;
