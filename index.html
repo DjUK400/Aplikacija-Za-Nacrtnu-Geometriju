@@ -657,7 +657,7 @@ function parseText(raw) {
   while ((m = reEq.exec(text))) specs.push({ name: m[2], pts: [m[3], m[4]], start: m.index });
   const reLN = new RegExp(PRE + '(?:[Pp]rav|[Dd]u[žz])[a-zčćšžđ]*\\s+(?:([a-z])\\s*[,:=]?\\s*)?([A-Z]\\d?)([A-Z]\\d?)(?![\\d' + LET + '])', 'g');
   while ((m = reLN.exec(text))) specs.push({ name: m[2] || null, pts: [m[3], m[4]], start: m.index, seg: /^(.)?[Dd]u/.test(m[0].trim()) });
-  const reLK = new RegExp(PRE + '[Pp]rav[a-zčćšžđ]*\\s+(?:([a-z])\\s+)?(?:koja\\s+)?(?:prolazi\\s+)?(?:kroz|odre[dđ][a-zčćšž]*|zadat[a-zčćšž]*)\\s+ta[čc]k[a-zčćšžđ]*\\s+([A-Z])(?:\\s*\\([^()]*\\))?\\s*(?:,|i)\\s*([A-Z])' + NL, 'g');
+  const reLK = new RegExp(PRE + '[Pp]rav[a-zčćšžđ]*\\s+(?:([a-z])\\s+)?(?:je\\s+)?(?:koja\\s+)?(?:je\\s+)?(?:prolazi\\s+)?(?:kroz|odre[dđ][a-zčćšž]*|zadat[a-zčćšž]*)\\s+ta[čc]k[a-zčćšžđ]*\\s+([A-Z])(?:\\s*\\([^()]*\\))?\\s*(?:,|i)\\s*([A-Z])' + NL, 'g');
   while ((m = reLK.exec(text))) specs.push({ name: m[2] || null, pts: [m[3], m[4]], start: m.index });
   // prava zadata prodorima (PaP, PaF, PaH)
   const byLine = {};
@@ -703,11 +703,16 @@ function parseText(raw) {
     const pts = gather(m.index + m[0].length, 3);
     if (pts.length === 3) addPoly(pts, 'tri', m.index);
   }
-  const reQ = new RegExp(PRE + '(paralelogram|[čcČC]etvorou?g)[a-zčćšžđ]*\\s+([A-Z])([A-Z])([A-Z])([A-Z])' + NL, 'gi');
+  const POLYK = [
+    [/^paralelogram/i, 'par'], [/^kvadrat/i, 'kv'], [/^pravougaon/i, 'prav'], [/^romb/i, 'romb'], [/^trapez/i, 'trap'],
+    [/^[čc]etvorou?g/i, 'quad'], [/^petoug/i, 'poly'], [/^[šs]estoug/i, 'poly'], [/^sedmoug/i, 'poly'], [/^osmoug/i, 'poly'], [/^mnogoug|^poligon|^lik/i, 'poly']
+  ];
+  const reQ = new RegExp(PRE + '(paralelogram|kvadrat|pravougaon|romb|trapez|[čcČC]etvorou?g|petoug|[šsŠS]estoug|sedmoug|osmoug|mnogoug|poligon|lik)[a-zčćšžđ]*\\s+((?:[A-Z]\\d?){3,10})(?![\\d' + LET + '])', 'gi');
   while ((m = reQ.exec(text))) {
-    const v = [m[3], m[4], m[5], m[6]].map(x => x.toUpperCase());
-    const par = /paral/i.test(m[2]);
-    if (par) { // nepoznati vrh paralelograma: A + C = B + D
+    const v = m[3].match(/[A-Z]\d?/g);
+    const kind = (POLYK.find(k => k[0].test(m[2])) || [0, 'poly'])[1];
+    if (v.length < 3) continue;
+    if (v.length === 4 && ['par', 'kv', 'prav', 'romb'].includes(kind)) { // nepoznati vrh: A + C = B + D
       const P = v.map(n => out.points[n]);
       if (P.every(Boolean)) {
         const ui = P.findIndex(p => p.unknown.length);
@@ -717,8 +722,15 @@ function parseText(raw) {
           P[ui].unknown = []; P[ui].fromPar = v.join('');
         }
       }
+    } else if (!v.every(n => out.points[n])) {
+      const P = v.map(n => out.points[n]);
+      if (v.length === 4 && P.filter(Boolean).length === 3 && kind !== 'trap') {
+        const ui = P.findIndex(x => !x), o = [(ui + 1) % 4, (ui + 2) % 4, (ui + 3) % 4];
+        const c = [0, 1, 2].map(j => P[o[0]].c[j] + P[o[2]].c[j] - P[o[1]].c[j]);
+        if (c.every(x => x !== null && isFinite(x))) { out.points[v[ui]] = { name: v[ui], c, unknown: [], fromPar: v.join('') }; out.order.push(v[ui]); }
+      }
     }
-    addPoly(v, par ? 'par' : 'quad', m.index);
+    addPoly(v, kind === 'tri' ? 'tri' : kind, m.index);
   }
   out.tris.sort((a, b) => a.start - b.start);
 
@@ -767,7 +779,26 @@ function parseText(raw) {
   });
 
   /* tijela */
-  const pyr = /pravil[a-zčćšž]*\s+(tro|[čc]etvoro|peto|[šs]esto)stran[a-zčćšž]*\s+piramid[a-zčćšž]*\s+([A-Z]{4,7})/i.exec(text) || /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text) && [null, 'tro', /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text)[1]];
+  const SOL = /(kvad(?:a)?r|kock|prizm|paralelepiped|tetraed(?:a)?r|piramid)[a-zčćšž]*\s+((?:[A-Z]\d?\s?){4,16})(?![\da-zčćšž])/i.exec(text);
+  const hm = /visin[a-zčćšž]*(?:\s+(?:kvadra|prizme|piramide|tijela|kocke))?\s*(?:je\s*)?(?:h\s*)?=?\s*(\d+(?:[.,]\d+)?)\s*cm/i.exec(text) || /\bh\s*=\s*(\d+(?:[.,]\d+)?)/.exec(text);
+  let genSolid = null;
+  if (SOL) {
+    const w = SOL[1].toLowerCase(), toks = SOL[2].replace(/\s+/g, '').match(/[A-Z]\d?/g);
+    const type = /^kvad/.test(w) ? 'kvadar' : /^kock/.test(w) ? 'kocka' : /^paralelep/.test(w) ? 'ppd' : /^tetra/.test(w) ? 'tet' : /^piramid/.test(w) ? 'pyr' : 'prism';
+    if (type === 'pyr' || type === 'tet') {
+      const base = toks.slice(0, -1), apex = toks[toks.length - 1];
+      if (base.every(n => out.points[n] && !out.points[n].unknown.length)) genSolid = { type, names: toks, base, apex, h: hm ? num(hm[1]) : null };
+    } else {
+      let base = toks.filter(n => !/\d/.test(n)), top = toks.filter(n => /\d/.test(n));
+      if (!top.length && base.length % 2 === 0) { top = base.slice(base.length / 2); base = base.slice(0, base.length / 2); }
+      if (top.length === base.length && base.length >= 3) {
+        const known = base.filter(n => out.points[n] && !out.points[n].unknown.length).length;
+        const edgeCube = type === 'kocka' && /tjem[a-zčćšž]*\s+[A-Z]\s+le[žz]i/.test(text);
+        if (!edgeCube && known >= base.length - (base.length === 4 ? 1 : 0)) genSolid = { type, names: toks, base, top, h: hm ? num(hm[1]) : null, below: /ispod\s+(osnove|ravni\s+osnove)/.test(low) };
+      }
+    }
+  }
+  const pyr = !genSolid && /pravil[a-zčćšž]*\s+(tro|[čc]etvoro|peto|[šs]esto)stran[a-zčćšž]*\s+piramid[a-zčćšž]*\s+([A-Z]{4,7})/i.exec(text) || /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text) && [null, 'tro', /piramid[a-zčćšž]*\s+([A-Z]{4,7})/.exec(text)[1]];
   if (pyr) {
     const nmap = { tro: 3, 'četvoro': 4, cetvoro: 4, peto: 5, 'šesto': 6, sesto: 6 };
     const letters = pyr[2].split(''), apex = letters[letters.length - 1];
@@ -775,7 +806,7 @@ function parseText(raw) {
     const am = /(?:stranic[a-zčćšž]*|ivic[a-zčćšž]*)\s+(?:osnove|baze|bazisa)[^.]*?(\d+(?:[.,]\d+)?)\s*cm/.exec(low) || /\ba\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
     out.solid = { type: 'pyr', n: nmap[pyr[1].toLowerCase()] || letters.length - 1, base: letters.slice(0, -1), apex, center: cen, a: am ? num(am[1]) : null, lower: !/vi[šs]a\s+od\s+suprotn/.test(low) };
   }
-  const cube = /kock[a-zčćšž]*\s+([A-Z])([A-Z])([A-Z])([A-Z])\s*[A-Z]1/.exec(text);
+  const cube = !genSolid && /kock[a-zčćšž]*\s+([A-Z])([A-Z])([A-Z])([A-Z])\s*[A-Z]1/.exec(text);
   if (cube) {
     const B = [cube[1], cube[2], cube[3], cube[4]];
     const em = /([A-Z])\s*\1\s*1/.exec(text.replace(/kock[^.]*$/, '')) || /du[žz]\s+([A-Z])([A-Z])1/.exec(text);
@@ -784,7 +815,8 @@ function parseText(raw) {
     const cond = cm ? { v: cm[1], c: /frontal/.test(cm[2]) ? 'y' : /horizontal/.test(cm[2]) ? 'z' : 'x', w: /frontal/.test(cm[2]) ? 'frontalnici' : /horizontal/.test(cm[2]) ? 'horizontalnici' : 'profilnici' } : null;
     out.solid = { type: 'cube', base: B, e0, e1: e0 + '1', cond };
   }
-  if (/konus|kupa\b|kupe\b/.test(low)) {
+  if (genSolid) out.solid = Object.assign({ gen: true }, genSolid);
+  if (!genSolid && /konus|kupa\b|kupe\b/.test(low)) {
     const rm = /\br\s*=\s*(\d+(?:[.,]\d+)?)/.exec(low);
     const vm = /vrh[a-zčćšž]*\s+([A-Z])(?![a-zčćšž])/.exec(text);
     const cm2 = /centar[a-zčćšž]*\s+(?:kru[žz]nice\s+|baze\s+|osnove\s+)?([A-Z])(?![a-zčćšž])/.exec(text);
@@ -803,7 +835,7 @@ function parseText(raw) {
 
   out.flags = {
     show3: /tre[ćc][aeiou]|tri\s+(ortogonaln|projekc)|profiln[a-z]*\s+projekc|\bp‴|tre[ćc]u\s+projek/.test(low),
-    kosa: /(^|[^a-zčćšž])kos(a|e|oj|u|om|ih|im)(\s|$|[.,;:])/.test(low),
+    kosa: /(^|[^a-zčćšž])kos(a|e|oj|u|om|ih|im)\s+projekcij|u\s+kosoj(\s|$|[.,;:])|\(\s*-?\s*xy\s*\)|-\s*xy\s*=/.test(low),
     ortoToo: /ortogonaln/.test(low),
     kosaPar: (() => {
       const r = {};
@@ -937,7 +969,14 @@ function detectTasks(P) {
   if (T.prodori && !nLines) delete T.prodori;
   // tijela i ostalo sa E4/E5 listova
   if (P.solid) {
-    T.solid = P.solid.type; delete T.prodori; delete T.prodor; delete T.oktanti;
+    T.solid = P.solid.gen ? 'gen' : P.solid.type;
+    if (P.solid.type !== 'cone') {
+      if (/presj|presek|presije|sije[čc]e/.test(low) && (P.planeOrder.length || P.planeDefs.length)) T.solidSection = true;
+      const sv = new Set((P.solid.names || []).concat(P.solid.base || [], P.solid.top || [], P.solid.apex ? [P.solid.apex] : []));
+      if (/prodor|probod|probad|prodir/.test(low) && P.lines.some(l => !l.pts.every(n => sv.has(n) || /^[A-Z]1$/.test(n) && sv.has(n[0])))) T.solidProdor = true;
+      delete T.presjek;
+    }
+    delete T.prodori; delete T.prodor; delete T.oktanti;
     if (P.solid.type === 'cone') {
       if (/presj|presek|presije|sije[čc]e/.test(low)) T.conePresjek = true;
       delete T.presjek;
@@ -1232,7 +1271,7 @@ class Solver {
       this.el({ k: 'Poly', pts: V3.map(P => this.pr(P, m)), cls: 'tri fillonly', poly: t });
       t.edges.forEach(ed => this.lineEl(ed.L, m, 'edge', null, { vis: 'all', noExt: true }));
     });
-    const kindW = { tri: 'trougla', par: 'paralelograma', quad: 'četvorougla' }[t.kind || 'tri'];
+    const kindW = polyWords(t)[1];
     this.say(`Projekcije ${kindW} ${t.name}: ${t.v.map(x => x + '′').join('')} i ${t.v.map(x => x + '″').join('')}.`);
   }
 
@@ -1695,8 +1734,7 @@ class Solver {
     opt = opt || {};
     const V3 = tri.P, names = tri.v, nv = V3.length;
     const pl = polyPlane(tri);
-    const kindW = { tri: 'trougla', par: 'paralelograma', quad: 'četvorougla' }[tri.kind || 'tri'];
-    const kindN = { tri: 'trougao', par: 'paralelogram', quad: 'četvorougao' }[tri.kind || 'tri'];
+    const [kindN, kindW] = polyWords(tri);
     const r = linePlane(L, pl);
     if (!r) { this.step(`Prodor kroz ${kindN}`, 'Prodor'); this.say(`${L.name} je paralelna sa ravni ${kindW}, pa ga ne probada.`); return null; }
     const Pp = r.P; addRel(L, Pp);
@@ -2163,9 +2201,12 @@ class Solver {
     (T.pravaUgao || []).forEach(sp => this.opPravaUgao(sp));
     if (T.ravanNagibnica) this.opRavanNagibnica(T.ravanNagibnica);
     if (T.horizontala || T.frontala) this.opHorFront();
+    if (T.solid === 'gen') this.opPolySolid(this.P.solid);
     if (T.solid === 'pyr') this.opPyramid(this.P.solid);
     if (T.solid === 'cube') this.opCube(this.P.solid);
     if (T.solid === 'cone') this.opCone(this.P.solid);
+    if (T.solidSection) this.opSolidSection();
+    if (T.solidProdor) this.opSolidProdor();
     if (T.transfPresjek) this.opTransfPresjek();
     else if (T.presjek && !T.solid) this.opPresjek();
     if (T.prodoriS) this.opProdoriS();
@@ -2809,7 +2850,10 @@ Object.assign(Solver.prototype, {
     }));
     const vis = (e, view) => e.fs.some(fi => dot(F[fi].n, view) > 1e-9);
     this.el({ k: 'G3', gen: view => ({ lines: edges.map(e => ({ pts: [verts[e.a], verts[e.b]], solid: vis(e, view), cls: 'body' })), pts: [] }) });
-    return { edges, F, vis };
+    const res = { edges, F, vis, verts };
+    res.hider = this.makeHider(verts, F);
+    this.solidObj = res;
+    return res;
   },
   hiddenEdgesText(ph) {
     const t = [];
@@ -3169,6 +3213,207 @@ Object.assign(Solver.prototype, {
   }
 });
 
+/* ---------------- opšti poliedri: prizma, kvadar, paralelepiped, piramida, tetraedar ---------------- */
+Object.assign(Solver.prototype, {
+  /* konveksno tijelo zaklanja tačku P ako zrak od P prema posmatraču prolazi kroz tijelo */
+  makeHider(verts, F) {
+    const faces = F.map(fa => ({ n: fa.n, q: verts[fa.f[0]] }));
+    return {
+      hides(P, view) {
+        let lo = 1e-6, hi = Infinity;
+        for (const fc of faces) {
+          const a = dot(fc.n, sub(P, fc.q)), b = dot(fc.n, view);
+          if (Math.abs(b) < 1e-12) { if (a > 1e-9) return false; continue; }
+          const t = -a / b;
+          if (b > 0) hi = Math.min(hi, t); else lo = Math.max(lo, t);
+          if (hi < lo + 1e-9) return false;
+        }
+        return hi > lo + 1e-9;
+      },
+      inside(P) { return faces.every(fc => dot(fc.n, sub(P, fc.q)) < -1e-9); }
+    };
+  },
+  solidNameW(type, n) {
+    if (type === 'kvadar') return ['kvadar', 'kvadra'];
+    if (type === 'kocka') return ['kocka', 'kocke'];
+    if (type === 'tet') return ['tetraedar', 'tetraedra'];
+    if (type === 'pyr') return ['piramida', 'piramide'];
+    if (type === 'ppd') return ['paralelepiped', 'paralelepipeda'];
+    return ['prizma', 'prizme'];
+  },
+  opPolySolid(sd) {
+    const P = n => this.pts[n] && this.pts[n].P;
+    const verts = {}, base = sd.base, nb = base.length;
+    // osnova: nedostajuće tjeme četvorougaone osnove iz pravila paralelograma
+    const missing = base.filter(n => !P(n));
+    if (nb === 4 && missing.length === 1 && sd.type !== 'pyr') {
+      const i = base.indexOf(missing[0]), o = [base[(i + 1) % 4], base[(i + 2) % 4], base[(i + 3) % 4]];
+      if (o.every(P)) {
+        const X = sub(add(P(o[0]), P(o[2])), P(o[1]));
+        this.pts[missing[0]] = { name: missing[0], P: X, c: [X.x, X.y, X.z], unknown: [], fromPar: base.join('') };
+        this.used.add(missing[0]);
+        this.step(`Tjeme ${missing[0]}`, missing[0]);
+        this.drawPoint(X, missing[0], 'res');
+        this.say(`Osnova ${base.join('')} je paralelogram (${sd.type === 'kvadar' || sd.type === 'kocka' ? 'pravougaonik' : 'kod paralelepipeda i prizme sa četvorougaonom osnovom'}), pa se dijagonale polove: ${missing[0]} = ${o[0]} + ${o[2]} − ${o[1]}. U projekcijama: ${missing[0]}′ je četvrto tjeme paralelograma nad ${o[0]}′${o[1]}′${o[2]}′, isto i u drugoj projekciji. ${missing[0]}${fP(X)}.`);
+        this.res1(`Tjeme ${missing[0]}`, `${missing[0]}${fP(X)}`);
+      }
+    }
+    if (!base.every(P)) { this.note(`Tijelu ${sd.names.join('')} nedostaju koordinate tjemena osnove (${base.filter(n => !P(n)).join(', ')}).`); return; }
+    base.forEach(n => { verts[n] = P(n); });
+    const B = base.map(n => verts[n]);
+    // ravan osnove
+    let nrm = V(0, 0, 0);
+    for (let i = 0; i < nb; i++) { const a = B[i], b = B[(i + 1) % nb]; nrm = add(nrm, V((a.y - b.y) * (a.z + b.z), (a.z - b.z) * (a.x + b.x), (a.x - b.x) * (a.y + b.y))); }
+    if (len(nrm) < 1e-9) { this.note('Tjemena osnove leže na jednoj pravoj.'); return; }
+    nrm = unit(nrm);
+    const off = B.map(Q => Math.abs(dot(nrm, sub(Q, B[0])))).reduce((a, b) => Math.max(a, b), 0);
+    if (off > 1e-3) this.note(`Tjemena osnove ne leže u jednoj ravni (odstupanje ${fmt(off)} cm); tijelo je nacrtano kako je zadato.`);
+    const cen = mul(B.reduce((s, q) => add(s, q), V(0, 0, 0)), 1 / nb);
+    let up = nrm;
+    if (up.z < -1e-9 || (Math.abs(up.z) < 1e-9 && (up.y < -1e-9 || (Math.abs(up.y) < 1e-9 && up.x < 0)))) up = mul(up, -1);
+    if (sd.below) up = mul(up, -1);
+    const [nomN, genN] = this.solidNameW(sd.type, nb);
+    let faces, info = '';
+    if (sd.type === 'pyr' || sd.type === 'tet') {
+      let Vx = P(sd.apex);
+      if (!Vx && sd.h) { Vx = add(cen, mul(up, sd.h)); info = `Vrh ${sd.apex} nije zadat, pa je piramida uzeta kao uspravna: ${sd.apex} je na normali na osnovu kroz njeno težište, na visini h = ${fmt(sd.h)} cm. `; this.drawPoint(Vx, sd.apex, 'res'); }
+      if (!Vx) { this.note(`Vrh ${sd.apex} nije zadat, a nije zadata ni visina.`); return; }
+      verts[sd.apex] = Vx;
+      faces = [base.slice().reverse()].concat(base.map((n, i) => [n, base[(i + 1) % nb], sd.apex]));
+      const h = Math.abs(dot(nrm, sub(Vx, B[0])));
+      info += `Bočne ivice spajaju tjemena osnove ${base.join('')} sa vrhom ${sd.apex}; visina (udaljenost vrha od ravni osnove) je ${fmt(h)} cm.`;
+      this.res1('Visina', `h = ${fmt(h)} cm`);
+    } else {
+      // gornja osnova: zadato tjeme X1, ili visina h (uspravna prizma), ili kocka (h = stranica)
+      let e = null, how = '';
+      const giv = sd.top.findIndex(n => P(n));
+      if (giv >= 0) { e = sub(P(sd.top[giv]), verts[base[giv]]); how = `Bočne ivice su paralelne i jednake ${base[giv]}${sd.top[giv]}, pa se gornja tjemena dobijaju nanošenjem iste duži iz svakog tjemena osnove (u projekcijama paralelne i jednake duži).`; }
+      else {
+        let h = sd.h;
+        if (!h && sd.type === 'kocka') h = len(sub(B[1], B[0]));
+        if (!h) { this.note(`Za ${genN.replace(/a$/, 'u')} nije zadato ni jedno gornje tjeme ni visina (npr. „visina h = 5 cm”).`); return; }
+        e = mul(up, h);
+        how = `Tijelo je uspravno, pa su bočne ivice okomite na osnovu: idu po normali na ravan osnove${Math.abs(nrm.z) > 0.999 ? ' (osnova je u horizontalnoj ravni, pa su ivice vertikalne: u prvoj projekciji su tačke, a u drugoj vertikalne duži dužine h)' : ' (u prvoj projekciji normala je okomita na horizontale osnove, a u drugoj na frontale)'}; dužina je h = ${fmt(h)} cm.`;
+      }
+      sd.top.forEach((n, i) => { verts[n] = add(verts[base[i]], e); });
+      faces = [base.slice(), sd.top.slice()].concat(base.map((n, i) => [n, base[(i + 1) % nb], sd.top[(i + 1) % nb], sd.top[i]]));
+      info = how;
+      if (sd.type === 'kvadar' || sd.type === 'kocka') {
+        const ab = sub(B[1], B[0]), ad = sub(B[nb - 1], B[0]);
+        const rect = Math.abs(dot(ab, ad)) < 1e-6 * len(ab) * len(ad);
+        const right = Math.abs(dot(unit(e), nrm)) > 1 - 1e-6;
+        if (!rect || !right) this.note(`${nomN[0].toUpperCase() + nomN.slice(1)}: ${!rect ? 'osnova nije pravougaonik' : ''}${!rect && !right ? ' i ' : ''}${!right ? 'bočne ivice nisu okomite na osnovu' : ''}; nacrtan je paralelepiped kako je zadato.`);
+      }
+      this.res1('Visina', `h = ${fmt(Math.abs(dot(e, nrm)))} cm, bočna ivica ${fmt(len(e))} cm`);
+    }
+    this.step(`${nomN[0].toUpperCase() + nomN.slice(1)} ${sd.names.join('')}`, nomN[0].toUpperCase() + nomN.slice(1));
+    Object.keys(verts).forEach(n => { if (!this.pts[n] || !this.pts[n].given || !this.pts[n].P) this.drawPoint(verts[n], n, 'pt2', { ord: Object.keys(verts).length <= 6 }); });
+    this.say(info);
+    this.step('Vidljivost', 'Vidljivost');
+    const ph = this.polyhedron(verts, faces);
+    this.say(this.hiddenEdgesText(ph));
+    Object.keys(verts).filter(n => !(this.pts[n] && (this.pts[n].given || this.pts[n].fromPar))).forEach(n => this.res1(`Tjeme ${n}`, `${n}${fP(verts[n])}`));
+    const vol = (() => { let s = 0; const c0 = mul(Object.values(verts).reduce((a, b) => add(a, b), V(0, 0, 0)), 1 / Object.keys(verts).length); ph.F.forEach(fa => { const Q = fa.f.map(n => verts[n]); for (let i = 1; i < Q.length - 1; i++) s += Math.abs(dot(sub(Q[0], c0), cross(sub(Q[i], c0), sub(Q[i + 1], c0)))) / 6; }); return s; })();
+    this.res1(nomN[0].toUpperCase() + nomN.slice(1), `${Object.keys(verts).length} tjemena, ${ph.edges.length} ivica, ${ph.F.length} strana; zapremina ${fmt(vol)} cm³`);
+    this.solidDone = true;
+  },
+
+  /* presjek poliedra i ravni */
+  opSolidSection() {
+    const so = this.solidObj, pl = this.givenPlanes().find(p => p.n);
+    if (!so || !pl) { if (!pl) this.note('Za presjek tijela nije zadata ravan.'); return; }
+    this.ensureTraces(pl);
+    const { verts, F } = so, N = pl.name;
+    const sd = Q => dot(pl.n, Q) - pl.d;
+    // prodori ivica kroz ravan
+    const hits = [];
+    so.edges.forEach(e => {
+      const A = verts[e.a], Bv = verts[e.b], a = sd(A), b = sd(Bv);
+      if (Math.abs(a) < 1e-9 && Math.abs(b) < 1e-9) return;
+      if (a * b <= 0 && Math.abs(a - b) > 1e-12) {
+        const X = add(A, mul(sub(Bv, A), a / (a - b)));
+        if (!hits.some(h => len(sub(h.P, X)) < 1e-6)) hits.push({ P: X, edge: e.a + e.b });
+      }
+    });
+    if (hits.length < 3) { this.step('Presjek', 'Presjek'); this.say(`Ravan ${N} ne siječe tijelo (ili ga samo dodiruje).`); this.res1(`Presjek sa ravni ${N}`, 'nema'); return; }
+    // segmenti po stranama (za vidljivost) i redoslijed tačaka
+    const segs = [];
+    F.forEach((fa, fi) => {
+      const Q = fa.f.map(n => verts[n]), pts = [];
+      for (let i = 0; i < Q.length; i++) {
+        const A = Q[i], Bv = Q[(i + 1) % Q.length], a = sd(A), b = sd(Bv);
+        if (Math.abs(a) < 1e-9) { if (!pts.some(p => len(sub(p, A)) < 1e-6)) pts.push(A); continue; }
+        if (a * b < 0) { const X = add(A, mul(sub(Bv, A), a / (a - b))); if (!pts.some(p => len(sub(p, X)) < 1e-6)) pts.push(X); }
+      }
+      if (pts.length === 2) segs.push({ a: pts[0], b: pts[1], fi });
+    });
+    const order = [hits[0].P];
+    const usedS = new Set();
+    for (let k = 0; k < segs.length; k++) {
+      const last = order[order.length - 1];
+      const si = segs.findIndex((s, i) => !usedS.has(i) && (len(sub(s.a, last)) < 1e-6 || len(sub(s.b, last)) < 1e-6));
+      if (si < 0) break;
+      usedS.add(si);
+      const nx = len(sub(segs[si].a, last)) < 1e-6 ? segs[si].b : segs[si].a;
+      if (len(sub(nx, order[0])) < 1e-6) break;
+      order.push(nx);
+    }
+    const labOf = P => { const i = hits.findIndex(h => len(sub(h.P, P)) < 1e-6); return i; };
+    const names = order.map((P, i) => String(i + 1));
+    this.step(`Prodori ivica kroz ravan ${N}`, 'Prodori ivica');
+    order.forEach((P, i) => this.drawPoint(P, names[i], 'res', { ord: true }));
+    const pairs = order.map((P, i) => { const h = hits[labOf(P)]; return `${names[i]} na ${h ? h.edge : '?'}`; });
+    this.say(`Presjek tijela i ravni je mnogougao čija su tjemena prodori ivica kroz ${N}. Prodor svake ivice nađe se kao prodor prave kroz ravan: kroz ivicu se postavi projicirajuća pomoćna ravan, ona siječe ${N} po pravoj, a ta prava siječe ivicu u traženoj tački. Prodori: ${pairs.join(', ')}.`);
+    this.step('Presjek i vidljivost', 'Presjek');
+    this.el({ k: 'G3', gen: view => ({ lines: segs.map(s => ({ pts: [s.a, s.b], solid: dot(F[s.fi].n, view) > -1e-9, cls: 'resS' })), pts: [] }) });
+    const vt = [1, 2].map(m => { const v = this.viewVec(m); const hid = segs.filter(s => dot(F[s.fi].n, v) <= -1e-9).length; return `u ${m === 1 ? 'prvoj' : 'drugoj'} projekciji ${hid ? hid + (hid === 1 ? ' stranica presjeka je nevidljiva' : ' stranice presjeka su nevidljive') : 'cijeli presjek je vidljiv'}`; });
+    this.say(`Tačke se spajaju redom kojim leže na stranama tijela: dvije tačke na istoj strani čine jednu stranicu presjeka. Stranica presjeka je vidljiva ako je vidljiva strana tijela na kojoj leži; ${vt.join(', a ')}.`);
+    // veličina presjeka
+    let area = 0; for (let i = 1; i < order.length - 1; i++) area += len(cross(sub(order[i], order[0]), sub(order[i + 1], order[0]))) / 2;
+    const per = order.reduce((s, P, i) => s + len(sub(order[(i + 1) % order.length], P)), 0);
+    const kn = ['', '', '', 'trougao', 'četvorougao', 'petougao', 'šestougao'][order.length] || `${order.length}-ugao`;
+    this.res1(`Presjek sa ravni ${N}`, `${kn} ${names.join('')}: ${order.map((P, i) => `${names[i]}${fP(P)}`).join(', ')}`);
+    this.res1('Presjek u pravoj veličini', `obim ${fmt(per)} cm, površina ${fmt(area)} cm²`);
+  },
+
+  /* prodor prave kroz poliedar */
+  opSolidProdor() {
+    const so = this.solidObj;
+    if (!so) return;
+    const solidNames = new Set(Object.keys(so.verts));
+    const lines = this.lines.filter(L => !L.pending && L.given && !(L.pts && L.pts.every(n => solidNames.has(n))));
+    if (!lines.length) { this.note('Za prodor kroz tijelo nije zadata prava.'); return; }
+    const { verts, F } = so;
+    lines.forEach(L => {
+      const ts = [];
+      F.forEach(fa => {
+        const Q = fa.f.map(n => verts[n]);
+        const den = dot(fa.n, L.u);
+        if (Math.abs(den) < 1e-12) return;
+        const t = dot(fa.n, sub(Q[0], L.p0)) / den, X = lineAt(L, t);
+        if (inPoly3(X, { P: Q }) && !ts.some(o => Math.abs(o.t - t) < 1e-7)) ts.push({ t, X, f: fa.f.join('') });
+      });
+      ts.sort((a, b) => a.t - b.t);
+      this.step(`Prodor prave ${L.name} kroz tijelo`, `Prodor ${L.name}`);
+      if (ts.length < 2) { this.say(`Prava ${L.name} ne prolazi kroz tijelo.`); this.res1(`Prodor ${L.name}`, 'nema'); return; }
+      const nmU = this.pickName(['U', 'M', 'P']), nmI = this.pickName(['I', 'N', 'Q']);
+      const a = ts[0], b = ts[ts.length - 1];
+      addRel(L, a.X); addRel(L, b.X);
+      this.drawPoint(a.X, nmU, 'res'); this.drawPoint(b.X, nmI, 'res');
+      L.hideTri = so.hider;
+      [1, 2].forEach(m => this.lineEl(L, m, 'res', null, { vis: 'all' }));
+      this.say(`Kroz pravu ${L.name} se postavi projicirajuća pomoćna ravan; ona siječe tijelo po mnogouglu, a prava ${L.name} siječe taj mnogougao u dvije tačke: ulaz ${nmU} (na strani ${a.f}) i izlaz ${nmI} (na strani ${b.f}). Između ${nmU} i ${nmI} prava je unutar tijela, pa se ne vidi; van tijela je nevidljiv dio iza tijela.`);
+      this.res1(`Prodor prave ${L.name}`, `ulaz ${nmU}${fP(a.X)}, izlaz ${nmI}${fP(b.X)}`);
+    });
+  }
+});
+
+function polyWords(t) {
+  const n = (t.v || t.P || []).length, k = t.kind || 'tri';
+  const M = { par: ['paralelogram', 'paralelograma'], kv: ['kvadrat', 'kvadrata'], prav: ['pravougaonik', 'pravougaonika'], romb: ['romb', 'romba'], trap: ['trapez', 'trapeza'], quad: ['četvorougao', 'četvorougla'] };
+  if (M[k]) return M[k];
+  return [['', '', '', 'trougao', 'četvorougao', 'petougao', 'šestougao', 'sedmougao', 'osmougao'][n] || `${n}-ugao`, ['', '', '', 'trougla', 'četvorougla', 'petougla', 'šestougla', 'sedmougla', 'osmougla'][n] || `${n}-ugla`];
+}
 function polyPlane(t) {
   const V3 = t.P;
   let n = V(0, 0, 0);
@@ -3193,6 +3438,7 @@ function inPoly2(q, poly) {
   return true;
 }
 function hiddenBy(P, T, m, S) {
+  if (T && T.hides) return T.hides(P, S.viewVec(m));
   if (Array.isArray(T)) return T.some(t => hiddenBy(P, t, m, S));
   if (T && T.P && T.P.length > 3) {
     for (let k = 1; k < T.P.length - 1; k++) if (hiddenBy(P, { P: [T.P[0], T.P[k], T.P[k + 1]], inner: true, k, n: T.P.length }, m, S)) return true;
@@ -3388,6 +3634,7 @@ function buildKosa(sol, prm) {
   const lineAtL = (L, t) => add(L.p0, mul(L.u, t));
   const hiddenK = (P, T) => {
     if (!T) return false;
+    if (T.hides) return T.hides(P, dView);
     if (Array.isArray(T)) return T.some(t => hiddenK(P, t));
     const pl = polyPlane(T), den = dot(pl.n, dView);
     if (Math.abs(den) < 1e-9 * len(pl.n)) return false;
@@ -3560,7 +3807,14 @@ const C = [
   { id: 'e4-1', src: 'E4', text: 'Date su ravan t (-2;2;3) i prava a određena tačkama A (-8;0;8) i B (-3;0;3). a) Kroz pravu a postaviti ravan β koja je upravna na ravan T; b) Ucrtati prvi nagibni triedar ravni β u tački A; c) Odrediti pravu veličinu rastojanja između tačaka A i B; d) Naći sve tačke u ravni β koje su 4 cm ispred frontalnice.' },
   { id: 'e4-2', src: 'E4', text: 'Dati su trouglovi ABC i KLM. A (-2,5;2;1), B (-8;6;4.5), C (-2,5;6,5;6,5) K (-7;1,5;5,5), L (-5;7;1), M (-1;3;2,5) a) Metodom transformacije naći presjek trougla ABC i trougla KLM; b) Poslije presjeka prikazati vidljivost oba trougla; c) Naći pravu veličinu trougla KLM. d) Naći prodore presječne prave kroz H, F i P.' },
   { id: 'e4-3', src: 'E4', text: 'Data je duž BB1 koja je ivica kocke ABCD A1B1C1D1. Nacrtati projekcije te kocke ako tjeme A leži u frontalnici. Odrediti vidljivost kocke u obe projekcije. Kocka leži u prvom oktantu. B (5;2.5;3.5) B1 (3;5.5;5.5)' },
-  { id: 'e4-4', src: 'E4', text: 'U ortogonalnoj projekciji odrediti presjek vertikalnog obrtnog kosog konusa sa ravni α. Drugi trag ravni odrediti iz uslova da ravan siječe konus po paraboli. Odrediti konturnu tačku presječne krive i prikazati vidljivost presjeka u obe projekcije. C (-8; 4; 0), r= 4cm, V (-8; 4; 8), α (-9; 9; ?). Baza konusa leži u horizontalnici.' }
+  { id: 'e4-4', src: 'E4', text: 'U ortogonalnoj projekciji odrediti presjek vertikalnog obrtnog kosog konusa sa ravni α. Drugi trag ravni odrediti iz uslova da ravan siječe konus po paraboli. Odrediti konturnu tačku presječne krive i prikazati vidljivost presjeka u obe projekcije. C (-8; 4; 0), r= 4cm, V (-8; 4; 8), α (-9; 9; ?). Baza konusa leži u horizontalnici.' },
+  // dodatni primjeri: tijela i mnogouglovi (nisu sa kolokvijuma)
+  { id: 's-kvadar', src: 'Tijela', text: 'Nacrtati projekcije kvadra ABCDA1B1C1D1 i odrediti vidljivost. Osnova ABCD leži u horizontalnici: A(2;1;0), B(7;1;0), D(2;4;0). Visina kvadra je h = 5 cm. Odrediti presjek kvadra sa ravni α(10; 8; 7) i vidljivost presjeka.' },
+  { id: 's-prizma', src: 'Tijela', text: 'Data je kosa trostrana prizma ABCA1B1C1: A(1;1;0), B(6;2;0), C(3;5;0), A1(3;3;6). Nacrtati projekcije prizme i odrediti prodor prave p kroz prizmu. Prava p je određena tačkama M(0;6;5) i N(8;0;2). Prikazati vidljivost.' },
+  { id: 's-petostrana', src: 'Tijela', text: 'Prizma ABCDEA1B1C1D1E1 je uspravna, osnova u H: A(2;1;0), B(5;1;0), C(6;3;0), D(3.5;5;0), E(1;3;0), visina h = 4 cm. Odrediti presjek sa ravni α(12; 9; 5).' },
+  { id: 's-piramida4', src: 'Tijela', text: 'Data je piramida ABCDV: A(2;1;0), B(7;1;0), C(7;5;0), D(2;5;0), V(4;3;7). Odrediti presjek piramide sa ravni α(9; ∞; 5) i vidljivost.' },
+  { id: 's-tetraedar', src: 'Tijela', text: 'Nacrtati tetraedar ABCD: A(1;1;1), B(6;2;0), C(3;6;1), D(3;3;6) i odrediti presjek sa ravni α(7;7;4).' },
+  { id: 's-petougao', src: 'Tijela', text: 'Odrediti pravu veličinu petougla ABCDE obaranjem ravni u horizontalnicu. A(1;1;1,5), B(5;1;3,5), C(6;4;4), D(3;6;2,5), E(1;4;1,5)' }
 ];
 if (typeof module !== 'undefined' && module.exports) module.exports = C; else root.NG_CORPUS = C;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -3597,7 +3851,7 @@ const LAB = {
   'e5-1': 'E5 · O1 simetrična duž, paralelogram', 'e5-3': 'E5 · O3 pravilna trostrana piramida', 'e5-4': 'E5 · O4 presjek kosog konusa (kosa projekcija)',
   'e4-1': 'E4 · O1 ravan ⊥ T, nagibni triedar, tačke 4 cm ispred F', 'e4-2': 'E4 · O2 transformacija, prodori presječne prave', 'e4-3': 'E4 · O3 kocka iz ivice BB1', 'e4-4': 'E4 · O4 konus, presjek po paraboli'
 };
-K.forEach(c => EX.push({ id: c.id, group: c.src.startsWith('K1 vježba') ? 'K1 – zadaci za vježbu' : /^E\d/.test(c.src) ? 'Kolokvijumi – geodezija (E4, E5)' : 'Kolokvijumi K1', label: LAB[c.id] || c.src, text: c.text }));
+K.forEach(c => EX.push({ id: c.id, group: c.src.startsWith('K1 vježba') ? 'K1 – zadaci za vježbu' : /^E\d/.test(c.src) ? 'Kolokvijumi – geodezija (E4, E5)' : c.src === 'Tijela' ? 'Tijela i mnogouglovi (primjeri)' : 'Kolokvijumi K1', label: LAB[c.id] || c.src, text: c.text }));
 if (typeof module !== 'undefined' && module.exports) module.exports = EX; else root.NG_EXAMPLES = EX;
 })(typeof window !== 'undefined' ? window : globalThis);
 

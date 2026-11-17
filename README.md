@@ -10,18 +10,19 @@ Sajt za zadatke iz nacrtne geometrije (Građevinski fakultet, Banja Luka). Upiš
 - Prava: tri projekcije, prodori kroz H, F i P, vidljivost, oktanti, prava veličina i nagibni uglovi
 - Tačke zadate riječima („6 cm lijevo od profilnice, 5 cm iznad horizontalnice”) i nepoznate koordinate u ravni
 - Ravan: tragovi (iz odsječaka, tačaka, pravih ili trougla), nagibnice i ugao prema H i F, ravan iz ugla, simetralna ravan, paralelna i normalna ravan
-- Presjek ravni, prodor prave kroz ravan ili lik, presjek dva lika (trougao, paralelogram, četvorougao) s međusobnom vidljivošću
+- Presjek ravni, prodor prave kroz ravan ili lik, presjek dva lika (trougao, četvorougao, paralelogram, kvadrat, pravougaonik, romb, trapez, petougao i drugi mnogouglovi) s međusobnom vidljivošću
 - Udaljenosti: tačke od ravni, od traga, između paralelnih ravni
 - Obaranje ravni, prava veličina lika, centar upisane / opisane kružnice
 - Metoda transformacije: presjek likova, udaljenost tačke od ravni, prava veličina lika, prodori presječne prave
 - Simetrična duž u odnosu na ravan lika, nagibni triedar, tačke ravni na zadatoj udaljenosti od H ili F
+- Poliedri zadati tjemenima: kvadar, kocka, paralelepiped, prizma (bilo koja osnova, uspravna ili kosa, iz visine ili gornjeg tjemena), piramida sa bilo kojom osnovom, tetraedar; vidljivost, presjek sa ravni (mnogougao, vidljivost, obim i površina) i prodor prave kroz tijelo
 - Tijela: pravilna piramida (iz centra osnove i vrha), kocka iz ivice, kružni konus i njegov presjek ravni (vrsta krive, konturne tačke, tangente, dio tijela s jedne strane ravni, uslov parabole) — u ortogonalnoj i kosoj projekciji, s vidljivošću
 
-U meniju „Primjer sa listova” su zadaci sa K1 kolokvijuma (2020–2023), kolokvijuma iz geodezije (E4, E5) i listova za vježbu.
+U meniju „Primjer sa listova” su zadaci sa K1 kolokvijuma (2020–2023), kolokvijuma iz geodezije (E4, E5), listova za vježbu i primjeri sa tijelima i mnogouglovima.
 
 ## Ograničenja
 - U kosoj projekciji se crta rezultat u prostoru (tačke, prave, tragovi, likovi, presjeci) sa podesivim uglom (−xy) i skraćenjem ose y. Obaranje, prava veličina i transformacija crtaju se samo u ortogonalnoj.
-- Nisu podržani: prizma, valjak, lopta, presjeci piramide i kocke, rotacija, kolineacija, kotirana projekcija (plato, usjeci i nasipi).
+- Nisu podržani: valjak, lopta, presjek konkavnih tijela, rotacija, kolineacija, kotirana projekcija (plato, usjeci i nasipi).
 - Osa x ide udesno od O. Ako je na vježbama obrnuto, u opcijama izaberi „Osa x: ulijevo”.
 - Rezultate provjeri na crtežu prije predaje.
 
